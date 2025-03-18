@@ -1,0 +1,235 @@
+:root {
+    --device-border-color: hsl(0, 0%, 82%);
+    --device-list-stripe-color: hsl(0, 0%, 96%);
+    --device-list-default-color: hsl(0, 0%, 100%);
+    --device-list-hover-color: hsl(218, 67%, 95%);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --device-border-color: hsl(0, 0%, 32%);
+        --device-list-stripe-color: hsl(0, 0%, 16%);
+        --device-list-default-color: hsl(0, 0%, 14%);
+        --device-list-hover-color: hsl(218, 17%, 18%);
+    }
+}
+
+
+body.list {
+    height: auto;
+    width: auto;
+    overflow: auto;
+}
+
+#devices {
+    padding: 20px 0;
+    width: 100%;
+    height: calc(100% - 40px);
+    overflow-y: auto;
+}
+
+body.stream #devices {
+    background-color: var(--device-list-default-color);
+    opacity: .8;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 3;
+}
+
+body.list #device_list_menu {
+    display: none;
+}
+
+#device_list_menu {
+    display: block;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    z-index: 4;
+}
+
+#devices .device-list button {
+    font-size: var(--font-size);
+    color: var(--button-text-color);
+}
+
+#devices .device-list div.device:nth-child(2n+1){
+    background-color: var(--device-list-default-color);
+}
+
+#devices .device-list div.device:nth-child(2n){
+    background-color: var(--device-list-stripe-color);
+}
+
+#devices .device-header {
+    padding: 2px 0;
+}
+
+#devices .device-header div {
+    display: inline-flex;
+}
+
+#devices .device-name {
+    font-size: 120%;
+}
+
+#devices .device-model {
+    font-size: 110%;
+}
+
+#devices .device-serial {
+    color: var(--url-color);
+    font-size: 80%;
+    margin-left: 6px;
+}
+
+#devices .device-version {
+    font-size: 100%;
+    margin-left: 6px;
+    align-items: baseline;
+}
+
+#devices .device-version .sdk-version {
+    font-size: 75%;
+    color: var(--url-color);
+    margin-left: 0.2em;
+}
+
+#devices .device-state {
+    border-radius: 25px;
+    background-color: red;
+    font-size: 80%;
+    margin-left: 6px;
+    width: 1em;
+    height: 1em;
+}
+
+#devices .device.active .device-state {
+    background-color: green;
+}
+
+#devices .device-list {
+    position: relative;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+}
+
+#devices .device-list {
+    border-spacing: 0;
+    border-collapse: collapse;
+    font-family: monospace;
+    font-size: var(--font-size);
+}
+
+#devices .device-list div.device {
+    padding: 5px 20px 5px;
+}
+
+#devices .device-list div.device:hover {
+    background-color: var(--device-list-hover-color)
+}
+
+#devices .device-list div.device select {
+    color: var(--text-color);
+    background-color: var(--main-bg-color);
+    margin-left: 0;
+    border: none;
+}
+
+#devices .device-list div.device:hover select {
+    background-color: var(--device-list-hover-color);;
+}
+
+#devices .device-list div.desc-block {
+    margin: .3em;
+    display: inline-flex;
+}
+
+#devices .device-list div.desc-block.hidden {
+    display: none;
+}
+
+#devices .device-list div.desc-block.stream,
+#devices .device-list div.desc-block.server_pid,
+#devices .device-list div.desc-block.net_interface {
+    border: 1px solid var(--device-border-color);
+    border-radius: .3em;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#devices .device-list div.device div.desc-block.stream button.action-button {
+    color: var(--button-text-color);
+}
+
+#devices .device-list div.desc-block button {
+    fill: var(--text-color)
+}
+
+#devices .device-list div.desc-block button > span {
+    padding: 0 .5em;
+}
+
+#devices .device-list div.desc-block button > span,
+#devices .device-list div.desc-block button > svg {
+    vertical-align: middle;
+}
+
+#devices .device-list div.desc-block button > svg {
+    width: var(--font-size);
+    height: var(--font-size);
+}
+
+#devices .device-list div.desc-block button > svg > path {
+    fill: var(--text-color);
+}
+
+#devices .device-list .device.not-active div.desc-block button > svg > path {
+    fill: var(--text-color-light);
+}
+
+#devices .device-list .device.not-active select {
+    color: var(--text-color-light);
+}
+
+#devices .device-list .device.not-active {
+    color: var(--text-color-light);
+}
+
+#devices .device-list .device.not-active a {
+    color: var(--link-color-light);
+}
+
+#devices .device-list .device.not-active a:visited {
+    color: var(--link-color_visited-light);
+}
+
+#devices .device-list div.device div.desc-block .action-button {
+    border: none;
+    background-color: rgba(0, 0, 0, 0);
+    color: inherit;
+}
+
+#devices .device-list div.device div.desc-block .action-button.update-interfaces-button {
+    margin-right: 0;
+}
+
+#devices .device-list div.device div.desc-block .action-button.active {
+    cursor: pointer;
+}
+
+#devices .device-list .device.active div.desc-block .action-button:hover {
+    color: var(--kill-button-hover-color);
+}
+
+#devices .device-list .device.active div.desc-block button.action-button:hover > svg > path {
+    fill: var(--kill-button-hover-color);
+}
+
+#devices .tracker-name {
+    padding: 5px 20px 5px;
+    font-size: larger;
+    font-weight: bolder;
+}

@@ -1,0 +1,6 @@
+src/public/**/*.js
+vendor/**/*.js
+vendor/**/*.ts
+src/app/Util.ts
+*.js
+typings/**/*.d.ts
