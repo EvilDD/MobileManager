@@ -1,11 +1,21 @@
-
 # CLI tool, only in development environment.
 # https://goframe.org/docs/cli
 gfcli:
   gen:
     dao:
-      - link: "mysql:root:12345678@tcp(127.0.0.1:3306)/test"
-        descriptionTag: true
+      - link:     "sqlite::@file(./data/mm.db)"
+        tables:   "device,group"
+        jsonCase: "CamelLower"
+  
+  # Building/Compiling
+  build:
+    name:     "cloud-phone-server"
+    arch:     "amd64"
+    system:   "windows"
+    pack:     "manifest/config"
+    version:  "v1.0.0"
+    output:   "./bin"
+    extra:    ""
 
   docker:
     build: "-a amd64 -s linux -p temp -ew"

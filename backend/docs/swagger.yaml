@@ -1,0 +1,232 @@
+definitions:
+  controller.GroupDeleteReq:
+    properties:
+      id:
+        type: integer
+    type: object
+  model.Device:
+    properties:
+      createdAt:
+        type: string
+      deviceId:
+        type: string
+      groupId:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  model.DeviceListReq:
+    properties:
+      groupId:
+        description: 分组ID
+        type: integer
+      keyword:
+        description: 搜索关键词
+        type: string
+      page:
+        description: 页码
+        type: integer
+      pageSize:
+        description: 每页数量
+        type: integer
+    type: object
+  model.DeviceListRes:
+    properties:
+      list:
+        description: 设备列表
+        items:
+          $ref: '#/definitions/model.Device'
+        type: array
+      page:
+        description: 页码
+        type: integer
+      pageSize:
+        description: 每页数量
+        type: integer
+      total:
+        description: 总数
+        type: integer
+    type: object
+  model.Group:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  model.GroupCreateReq:
+    properties:
+      description:
+        description: 分组描述
+        type: string
+      name:
+        description: 分组名称
+        type: string
+    type: object
+  model.GroupListReq:
+    properties:
+      keyword:
+        description: 搜索关键词
+        type: string
+      page:
+        description: 页码
+        type: integer
+      pageSize:
+        description: 每页数量
+        type: integer
+    type: object
+  model.GroupListRes:
+    properties:
+      list:
+        description: 分组列表
+        items:
+          $ref: '#/definitions/model.Group'
+        type: array
+      page:
+        description: 页码
+        type: integer
+      pageSize:
+        description: 每页数量
+        type: integer
+      total:
+        description: 总数
+        type: integer
+    type: object
+  model.GroupUpdateReq:
+    properties:
+      description:
+        description: 分组描述
+        type: string
+      id:
+        description: 分组ID
+        type: integer
+      name:
+        description: 分组名称
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/v1/devices/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取云手机设备列表，支持分页、关键字搜索和分组筛选
+      parameters:
+      - description: 请求参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/model.DeviceListReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 返回结果
+          schema:
+            $ref: '#/definitions/model.DeviceListRes'
+      summary: 获取设备列表
+      tags:
+      - 设备管理
+  /api/v1/groups/create:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的云手机分组
+      parameters:
+      - description: 请求参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/model.GroupCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 返回结果
+          schema:
+            type: object
+      summary: 创建分组
+      tags:
+      - 分组管理
+  /api/v1/groups/delete:
+    delete:
+      consumes:
+      - application/json
+      description: 删除云手机分组，只有当分组下没有设备时才能删除
+      parameters:
+      - description: 请求参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/controller.GroupDeleteReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 返回结果
+          schema:
+            type: object
+      summary: 删除分组
+      tags:
+      - 分组管理
+  /api/v1/groups/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取云手机分组列表，支持分页和关键字搜索
+      parameters:
+      - description: 请求参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/model.GroupListReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 返回结果
+          schema:
+            $ref: '#/definitions/model.GroupListRes'
+      summary: 获取分组列表
+      tags:
+      - 分组管理
+  /api/v1/groups/update:
+    put:
+      consumes:
+      - application/json
+      description: 更新云手机分组信息
+      parameters:
+      - description: 请求参数
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/model.GroupUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 返回结果
+          schema:
+            type: object
+      summary: 更新分组
+      tags:
+      - 分组管理
+swagger: "2.0"

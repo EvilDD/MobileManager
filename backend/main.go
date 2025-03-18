@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "backend/docs" // 导入swagger文档
 	_ "backend/internal/boot"
 	_ "backend/internal/packed"
 
@@ -12,5 +13,6 @@ import (
 )
 
 func main() {
+	// cmd.Main.Run(gctx.GetInitCtx())
 	cmd.Main.Run(gctx.New())
 }
