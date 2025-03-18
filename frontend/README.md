@@ -1,6 +1,6 @@
-# 运维管理平台
+# 测试管理平台
 
-基于 Vue3、TypeScript、Element Plus、Pinia 和 Vite 等最新技术栈的运维管理平台。
+基于 Vue3、TypeScript、Element Plus、Pinia 和 Vite 等最新技术栈的管理平台。
 
 ## 技术栈
 

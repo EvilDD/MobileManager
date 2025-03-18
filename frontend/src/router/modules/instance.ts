@@ -1,29 +1,20 @@
 export default {
   path: "/instance",
-  redirect: "/instance/list",
+  redirect: "/instance/cloudphone",
   meta: {
-    icon: "ri:server-line",
-    title: "实例管理",
+    icon: "ri:smartphone-line",
+    title: "云手机管理",
     rank: 9
     // showLink: false
   },
   children: [
     {
-      path: "/instance/list",
-      name: "InstanceList",
-      component: () => import("@/views/instance/list.vue"),
+      path: "/instance/cloudphone",
+      name: "CloudPhone",
+      component: () => import("@/views/instance/cloudphone.vue"),
       meta: {
-        title: "实例列表"
-        // showLink: true
-      }
-    },
-    {
-      path: "/instance/list",
-      name: "InstanceList",
-      component: () => import("@/views/instance/list.vue"),
-      meta: {
-        title: "实例列表",
-        showLink: false
+        title: "云手机管理",
+        icon: "ri:smartphone-line"
       }
     }
   ]
