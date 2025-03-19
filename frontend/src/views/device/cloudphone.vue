@@ -1,6 +1,5 @@
-<!-- eslint-disable prettier/prettier -->
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, provide } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   getGroupList,
@@ -42,13 +41,35 @@ const pagination = ref({
 
 // 过滤后的分组
 const filteredGroups = computed(() => {
+  // 过滤用户定义的分组（不包括"新设备"）
+  const userGroups = groups.value.filter(group => group.id !== 0);
+  
   if (!groupSearchKeyword.value) {
-    return groups.value;
+    return [
+      { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
+      ...userGroups
+    ];
   }
-  return groups.value.filter(group =>
-    group.name.toLowerCase().includes(groupSearchKeyword.value.toLowerCase())
-  );
+  
+  return [
+    { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
+    ...userGroups.filter(group =>
+      group.name.toLowerCase().includes(groupSearchKeyword.value.toLowerCase())
+    )
+  ];
 });
+
+// 提供分组列表给GroupBadge组件
+provide("groupsList", computed(() => {
+  // 过滤用户定义的分组（不包括"新设备"）
+  const userGroups = groups.value.filter(group => group.id !== 0);
+  
+  // 确保新设备放在第一位，但是在GroupBadge组件中会过滤掉
+  return [
+    { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
+    ...userGroups
+  ];
+}));
 
 // 当前选中的分组
 const activeGroup = ref(0);
@@ -72,12 +93,9 @@ const getGroups = async () => {
     console.log("分组列表API响应:", res);
 
     // 检查响应结构
-    if (res && res.data.list) {
-      // 添加"全部"选项
-      groups.value = [
-        { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
-        ...res.data.list
-      ];
+    if (res && res.data && res.data.list) {
+      // 直接使用后端返回的分组列表，不添加"新设备"
+      groups.value = res.data.list;
     } else {
       console.error("分组列表数据格式不符合预期:", res);
       ElMessage.warning("获取分组列表数据格式不正确");
@@ -162,9 +180,11 @@ const connectToPhone = (device: Device) => {
 
 // 修改设备过滤逻辑
 const getDeviceCountByGroupId = (groupId: number) => {
-  return devices.value.filter(
-    device => device.info_entity.group_id === groupId
-  ).length;
+  if (!devices.value || devices.value.length === 0) return 0;
+  
+  return devices.value.filter(device => {
+    return device.info_entity && device.info_entity.group_id === groupId;
+  }).length;
 };
 
 // 处理对话框关闭
@@ -227,8 +247,8 @@ onMounted(() => {
               type="primary"
               size="small"
               circle
-              @click="refreshGroups"
               class="action-btn"
+              @click="refreshGroups"
             >
               <el-icon><Refresh /></el-icon>
             </el-button>
@@ -238,8 +258,8 @@ onMounted(() => {
               type="primary"
               size="small"
               circle
-              @click="() => (showAddGroupDialog = true)"
               class="action-btn"
+              @click="() => (showAddGroupDialog = true)"
             >
               <el-icon><Plus /></el-icon>
             </el-button>
@@ -270,7 +290,7 @@ onMounted(() => {
         >
           <div class="group-item-content">
             <div class="group-icon">
-              <GroupBadge :group-id="group.id" small v-if="group.id > 0" />
+              <GroupBadge v-if="group.id > 0" :group-id="group.id" small />
               <el-icon v-else><Grid /></el-icon>
             </div>
             <div class="group-info">
@@ -328,7 +348,7 @@ onMounted(() => {
       </div>
 
       <!-- 云手机列表 -->
-      <div class="phone-grid" v-loading="loading">
+      <div v-loading="loading" class="phone-grid">
         <div
           v-for="device in devices"
           :key="device.info_entity.id"
@@ -342,7 +362,7 @@ onMounted(() => {
             />
             <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
             <GroupBadge
-              :group-id="(device.info_entity.id % 4) + 1"
+              :group-id="device.info_entity.group_id || 1"
               class="preview-badge"
             />
           </div>

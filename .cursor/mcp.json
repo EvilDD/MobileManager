@@ -5,7 +5,8 @@
         "args": [
           "-y",
           "@modelcontextprotocol/server-filesystem",
-          "E:\\codes\\MobileManger"
+          "E:\\codes\\MobileManger",
+          "C:\\Users\\Administrator"
         ]
       },
       "sqlite": {
