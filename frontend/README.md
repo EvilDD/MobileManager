@@ -1,4 +1,4 @@
-# 测试管理平台
+# 自动化管理平台
 
 基于 Vue3、TypeScript、Element Plus、Pinia 和 Vite 等最新技术栈的管理平台。
 
