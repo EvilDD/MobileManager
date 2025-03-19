@@ -1,47 +1,55 @@
 package service
 
 import (
-	"backend/internal/model"
 	"context"
 
-	"github.com/gogf/gf/v2/frame/g"
+	v1 "backend/api/device/v1"
+	"backend/internal/dao"
+	"backend/internal/model"
 )
 
-var DeviceService = &deviceService{}
+var DeviceService = deviceService{}
 
 type deviceService struct{}
 
 // List 获取设备列表
-func (s *deviceService) List(ctx context.Context, req *model.DeviceListReq) (*model.DeviceListRes, error) {
-	m := g.DB().Model("device")
+func (s *deviceService) List(ctx context.Context, req *v1.ListReq) (res *v1.ListRes, err error) {
+	res = &v1.ListRes{
+		List:     make([]v1.Device, 0),
+		Page:     req.Page,
+		PageSize: req.PageSize,
+	}
 
-	// 分组筛选
+	m := dao.Device.Ctx(ctx)
 	if req.GroupId > 0 {
 		m = m.Where("group_id", req.GroupId)
 	}
-
-	// 关键词搜索
 	if req.Keyword != "" {
-		m = m.Where("name LIKE ? OR device_id LIKE ?", "%"+req.Keyword+"%", "%"+req.Keyword+"%")
+		m = m.WhereLike("name", "%"+req.Keyword+"%")
 	}
 
-	// 获取总数
-	count, err := m.Count()
+	res.Total, err = m.Count()
 	if err != nil {
 		return nil, err
 	}
 
-	// 获取列表
-	var list []model.Device
-	err = m.Page(req.Page, req.PageSize).Order("id DESC").Scan(&list)
+	var devices []*model.Device
+	err = m.Page(req.Page, req.PageSize).Scan(&devices)
 	if err != nil {
 		return nil, err
 	}
 
-	return &model.DeviceListRes{
-		List:     list,
-		Total:    count,
-		Page:     req.Page,
-		PageSize: req.PageSize,
-	}, nil
+	for _, device := range devices {
+		res.List = append(res.List, v1.Device{
+			Id:        device.Id,
+			Name:      device.Name,
+			DeviceId:  device.DeviceId,
+			GroupId:   device.GroupId,
+			Status:    device.Status,
+			CreatedAt: device.CreatedAt.String(),
+			UpdatedAt: device.UpdatedAt.String(),
+		})
+	}
+
+	return
 }

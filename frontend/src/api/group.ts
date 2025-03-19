@@ -42,20 +42,20 @@ export interface GroupDeleteReq {
 
 // 获取分组列表
 export function getGroupList(params: GroupListReq) {
-  return http.request<GroupListRes>("get", "/api/v1/groups/list", { params });
+  return http.request<GroupListRes>("get", "/api/groups/list", { params });
 }
 
 // 创建分组
 export function createGroup(data: GroupCreateReq) {
-  return http.request("post", "/api/v1/groups/create", { data });
+  return http.request("post", "/api/groups/create", { data });
 }
 
 // 更新分组
 export function updateGroup(data: GroupUpdateReq) {
-  return http.request("put", "/api/v1/groups/update", { data });
+  return http.request("put", "/api/groups/update", { data });
 }
 
 // 删除分组
 export function deleteGroup(data: GroupDeleteReq) {
-  return http.request("delete", "/api/v1/groups/delete", { data });
+  return http.request("delete", "/api/groups/delete", { data });
 }

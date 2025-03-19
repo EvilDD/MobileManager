@@ -42,14 +42,14 @@ export interface DeviceListResult {
 
 /** 获取设备列表 */
 export function getDeviceList(params: { page: number; size: number }) {
-  return http.request<DeviceListResult>("get", "/api/v1/devices/list", { params });
+  return http.request<DeviceListResult>("get", "/api/devices/list", { params });
 }
 
 /** 保存设备 */
 export function saveDevice(data: { device: InfoEntity }) {
   return http.request<{ code: number; message: string; data: {} }>(
     "post",
-    "/api/v1/devices/save",
+    "/api/devices/save",
     { data }
   );
 } 

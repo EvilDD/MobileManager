@@ -11,7 +11,8 @@ import (
 	"github.com/swaggo/swag"
 
 	_ "backend/docs"
-	"backend/internal/controller"
+	"backend/internal/controller/device"
+	groupctl "backend/internal/controller/group"
 	"backend/internal/controller/hello"
 )
 
@@ -49,22 +50,9 @@ var (
 				group.Middleware(ghttp.MiddlewareHandlerResponse)
 				group.Bind(
 					hello.NewV1(),
+					device.NewV1(),
+					groupctl.NewV1(),
 				)
-			})
-
-			// 添加设备相关路由
-			s.Group("/api/v1", func(group *ghttp.RouterGroup) {
-				// 添加中间件
-				group.Middleware(ghttp.MiddlewareHandlerResponse)
-
-				// 设备相关接口
-				group.GET("/devices/list", controller.DeviceController.List)
-
-				// 分组相关接口
-				group.GET("/groups/list", controller.GroupController.List)
-				group.POST("/groups/create", controller.GroupController.Create)
-				group.PUT("/groups/update", controller.GroupController.Update)
-				group.DELETE("/groups/delete", controller.GroupController.Delete)
 			})
 
 			s.Run()
