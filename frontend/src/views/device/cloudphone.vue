@@ -1,6 +1,7 @@
+<!-- eslint-disable prettier/prettier -->
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   getGroupList,
   createGroup,
@@ -19,7 +20,8 @@ import {
   Refresh,
   Grid,
   ArrowDown,
-  Search
+  Search,
+  Delete
 } from "@element-plus/icons-vue";
 
 defineOptions({
@@ -27,9 +29,7 @@ defineOptions({
 });
 
 // 分组数据
-const groups = ref<GroupItem[]>([
-  { id: 0, name: "全部", description: "", createdAt: "", updatedAt: "" }
-]);
+const groups = ref<GroupItem[]>([]);
 
 // 分组搜索关键词
 const groupSearchKeyword = ref("");
@@ -37,7 +37,7 @@ const groupSearchKeyword = ref("");
 // 分页参数
 const pagination = ref({
   page: 1,
-  pageSize: 10
+  pageSize: 100
 });
 
 // 过滤后的分组
@@ -72,11 +72,11 @@ const getGroups = async () => {
     console.log("分组列表API响应:", res);
 
     // 检查响应结构
-    if (res && res.list) {
+    if (res && res.data.list) {
       // 添加"全部"选项
       groups.value = [
-        { id: 0, name: "全部", description: "", createdAt: "", updatedAt: "" },
-        ...res.list
+        { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
+        ...res.data.list
       ];
     } else {
       console.error("分组列表数据格式不符合预期:", res);
@@ -178,6 +178,37 @@ const handleConfirmAddGroup = () => {
   addNewGroup();
 };
 
+// 删除分组
+const confirmDeleteGroup = (group: GroupItem, event: MouseEvent) => {
+  // 阻止事件冒泡，避免触发分组选择
+  event.stopPropagation();
+  
+  ElMessageBox.confirm(
+    `确认删除分组"${group.name}"吗？`,
+    '删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(async () => {
+    try {
+      await deleteGroup({ id: group.id });
+      ElMessage.success('删除分组成功');
+      getGroups();
+      // 如果当前选中的是被删除的分组，切换到"新设备"分组
+      if (activeGroup.value === group.id) {
+        changeGroup(0);
+      }
+    } catch (error) {
+      console.error('删除分组失败:', error);
+      ElMessage.error('删除分组失败');
+    }
+  }).catch(() => {
+    // 用户取消删除操作
+  });
+};
+
 onMounted(() => {
   getGroups();
   getDevices();
@@ -207,7 +238,7 @@ onMounted(() => {
               type="primary"
               size="small"
               circle
-              @click="() => showAddGroupDialog = true"
+              @click="() => (showAddGroupDialog = true)"
               class="action-btn"
             >
               <el-icon><Plus /></el-icon>
@@ -247,6 +278,19 @@ onMounted(() => {
               <div class="group-count">
                 {{ getDeviceCountByGroupId(group.id) }} 台设备
               </div>
+            </div>
+            <!-- 添加删除图标，新设备分组不显示 -->
+            <div v-if="group.id > 0" class="group-actions">
+              <el-button
+                size="small"
+                type="danger"
+                icon="Delete"
+                circle
+                plain
+                @click="e => confirmDeleteGroup(group, e)"
+              >
+                <el-icon><Delete /></el-icon>
+              </el-button>
             </div>
           </div>
         </div>
@@ -456,6 +500,20 @@ onMounted(() => {
 
 .group-info {
   flex: 1;
+}
+
+.group-actions {
+  opacity: 0.5;
+  transition: opacity 0.3s;
+}
+
+.group-item:hover .group-actions {
+  opacity: 1;
+}
+
+.group-actions .el-button {
+  padding: 4px;
+  font-size: 12px;
 }
 
 .group-name {

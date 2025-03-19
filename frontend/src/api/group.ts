@@ -15,10 +15,14 @@ export interface GroupListReq {
 }
 
 export interface GroupListRes {
-  list: GroupItem[];
-  total: number;
-  page: number;
-  pageSize: number;
+  code: number;
+  message: string;
+  data: {
+    list: GroupItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+  };
 }
 
 export interface GroupCreateReq {
