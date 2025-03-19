@@ -178,7 +178,19 @@ const refreshGroups = () => {
 
 // 连接到云手机
 const connectToPhone = (device: Device) => {
-  ElMessage.success(`连接到云手机: ${device.id}`);
+  ElMessage.success(`连接到云手机: ${device.deviceId}`);
+};
+
+// 重启云手机
+const restartPhone = (device: Device, event: MouseEvent) => {
+  event.stopPropagation();
+  ElMessage.warning(`重启云手机: ${device.deviceId}`);
+};
+
+// 关闭云手机
+const shutdownPhone = (device: Device, event: MouseEvent) => {
+  event.stopPropagation();
+  ElMessage.error(`关闭云手机: ${device.deviceId}`);
 };
 
 // 修改设备过滤逻辑
@@ -412,25 +424,27 @@ onMounted(() => {
           v-for="device in devices"
           :key="device.id"
           class="phone-card"
-          @click="connectToPhone(device)"
         >
-          <div class="phone-preview">
+          <div class="phone-header">
+            <div class="device-id">{{ device.deviceId }}</div>
             <div
               class="phone-status"
               :class="{ online: device.status === 'online' }"
             />
-            <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
-            <GroupBadge
-              :group-id="device.groupId"
-              class="preview-badge"
-            />
           </div>
-          <div class="phone-info">
-            <div class="phone-name">{{ device.name }}</div>
-            <div class="phone-ip">{{ device.deviceId }}</div>
-            <div class="phone-type">
-              {{ device.status === 'online' ? '在线' : '离线' }}
-            </div>
+          <div class="phone-preview" @click="connectToPhone(device)">
+            <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
+          </div>
+          <div class="phone-actions">
+            <el-button type="primary" size="small" class="action-button" @click="connectToPhone(device)">
+              连接
+            </el-button>
+            <el-button type="warning" size="small" class="action-button" @click="restartPhone(device, $event)">
+              重启
+            </el-button>
+            <el-button type="danger" size="small" class="action-button" @click="shutdownPhone(device, $event)">
+              关机
+            </el-button>
           </div>
         </div>
 
@@ -645,10 +659,34 @@ onMounted(() => {
 /* 云手机卡片网格 */
 .phone-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
   overflow-y: auto;
   padding-bottom: 20px;
+  padding-top: 10px;
+}
+
+@media screen and (max-width: 1600px) {
+  .phone-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+
+@media screen and (max-width: 1200px) {
+  .phone-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .phone-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  
+  .action-button {
+    padding: 4px 4px;
+    font-size: 11px;
+  }
 }
 
 .phone-card {
@@ -657,9 +695,10 @@ onMounted(() => {
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   overflow: hidden;
   cursor: pointer;
-  transition:
-    transform 0.3s,
-    box-shadow 0.3s;
+  transition: transform 0.3s, box-shadow 0.3s;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .phone-card:hover {
@@ -667,58 +706,69 @@ onMounted(() => {
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
-.phone-preview {
-  height: 120px;
-  background-color: #f5f7fa;
-  position: relative;
+.phone-header {
+  padding: 10px;
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f0f0f0;
+  background-color: #f9f9f9;
 }
 
-.preview-img {
-  max-height: 100%;
-  max-width: 100%;
-  object-fit: contain;
+.device-id {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .phone-status {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background-color: #f56c6c;
+  display: inline-block;
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
 .phone-status.online {
   background-color: #67c23a;
 }
 
-.phone-info {
-  padding: 12px;
+.phone-preview {
+  position: relative;
+  width: 100%;
+  padding-top: 177.78%; /* 保持 360:640 的宽高比 */
+  background-color: #f5f7fa;
+  overflow: hidden;
+  flex-grow: 1;
 }
 
-.phone-name {
-  font-weight: bold;
-  margin-bottom: 5px;
+.preview-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
-.phone-ip {
-  color: #606266;
+.phone-actions {
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  border-top: 1px solid #f0f0f0;
+  background-color: #f9f9f9;
+}
+
+.action-button {
+  padding: 4px 8px;
   font-size: 12px;
-  margin-bottom: 3px;
-}
-
-.phone-type {
-  color: #909399;
-  font-size: 12px;
-  background-color: #f0f2f5;
-  padding: 2px 6px;
-  border-radius: 3px;
-  display: inline-block;
-  margin-top: 5px;
+  flex: 1;
 }
 
 .no-data {
@@ -726,11 +776,5 @@ onMounted(() => {
   text-align: center;
   padding: 30px;
   color: #909399;
-}
-
-.preview-badge {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
 }
 </style>
