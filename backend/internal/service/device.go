@@ -24,7 +24,7 @@ func (s *deviceService) List(ctx context.Context, req *v1.ListReq) (res *v1.List
 	}
 
 	m := dao.Device.Ctx(ctx)
-	if req.GroupId > 0 {
+	if req.GroupId >= 0 {
 		m = m.Where("group_id", req.GroupId)
 	}
 	if req.Keyword != "" {

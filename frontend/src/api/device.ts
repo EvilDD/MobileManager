@@ -25,31 +25,46 @@ export interface InfoRealTime {
 }
 
 export interface Device {
-  info_entity: InfoEntity;
-  info_real_time: InfoRealTime;
+  id: number;
+  name: string;
+  deviceId: string;
+  groupId: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DeviceListResult {
   code: number;
   message: string;
   data: {
+    list: Device[];
     page: number;
-    size: number;
+    pageSize: number;
     total: number;
-    devices: Device[];
   };
 }
 
 /** 获取设备列表 */
-export function getDeviceList(params: { page: number; size: number }) {
+export function getDeviceList(params: { 
+  page: number; 
+  pageSize: number;
+  keyword?: string;
+  groupId?: number;
+}) {
   return http.request<DeviceListResult>("get", "/api/devices/list", { params });
 }
 
 /** 保存设备 */
-export function saveDevice(data: { device: InfoEntity }) {
+export function saveDevice(data: { 
+  name: string;
+  deviceId: string;
+  groupId?: number;
+  status: string;
+}) {
   return http.request<{ code: number; message: string; data: {} }>(
     "post",
-    "/api/devices/save",
+    "/api/devices/create",
     { data }
   );
 } 

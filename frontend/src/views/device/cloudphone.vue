@@ -110,20 +110,13 @@ const getDevices = async () => {
   try {
     loading.value = true;
     const res = await getDeviceList({
-      page: 1,
-      size: 50
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      groupId: activeGroup.value,
+      keyword: searchInput.value
     });
     if (res.code === 0) {
-      // 根据分组ID筛选
-      if (activeGroup.value === 0) {
-        // 全部
-        devices.value = res.data.devices;
-      } else {
-        // 按分组筛选
-        devices.value = res.data.devices.filter(
-          device => device.info_entity.group_id === activeGroup.value
-        );
-      }
+      devices.value = res.data.list;
     } else {
       ElMessage.error(res.message || "获取云手机列表失败");
     }
@@ -174,16 +167,14 @@ const refreshGroups = () => {
 
 // 连接到云手机
 const connectToPhone = (device: Device) => {
-  ElMessage.success(`连接到云手机: ${device.info_entity.id}`);
+  ElMessage.success(`连接到云手机: ${device.id}`);
 };
 
 // 修改设备过滤逻辑
 const getDeviceCountByGroupId = (groupId: number) => {
   if (!devices.value || devices.value.length === 0) return 0;
   
-  return devices.value.filter(device => {
-    return device.info_entity && device.info_entity.group_id === groupId;
-  }).length;
+  return devices.value.filter(device => device.groupId === groupId).length;
 };
 
 // 处理对话框关闭
@@ -406,32 +397,26 @@ onMounted(() => {
       <div v-loading="loading" class="phone-grid">
         <div
           v-for="device in devices"
-          :key="device.info_entity.id"
+          :key="device.id"
           class="phone-card"
           @click="connectToPhone(device)"
         >
           <div class="phone-preview">
             <div
               class="phone-status"
-              :class="{ online: device.info_entity.status === 'allow_alloc' }"
+              :class="{ online: device.status === 'online' }"
             />
             <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
             <GroupBadge
-              :group-id="device.info_entity.group_id || 1"
+              :group-id="device.groupId"
               class="preview-badge"
             />
           </div>
           <div class="phone-info">
-            <div class="phone-name">云手机 #{{ device.info_entity.id }}</div>
-            <div class="phone-ip">{{ device.info_entity.inner_ip_v_4 }}</div>
+            <div class="phone-name">{{ device.name }}</div>
+            <div class="phone-ip">{{ device.deviceId }}</div>
             <div class="phone-type">
-              {{
-                device.info_entity.inst_type === 0
-                  ? "房间实例"
-                  : device.info_entity.inst_type === 1
-                    ? "衣服实例"
-                    : "人物实例"
-              }}
+              {{ device.status === 'online' ? '在线' : '离线' }}
             </div>
           </div>
         </div>
