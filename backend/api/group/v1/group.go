@@ -46,6 +46,7 @@ type Group struct {
 	Id          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	DeviceCount int    `json:"deviceCount" dc:"设备数量"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 }

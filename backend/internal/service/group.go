@@ -38,11 +38,34 @@ func (s *groupService) List(ctx context.Context, req *v1.ListReq) (res *v1.ListR
 		return nil, err
 	}
 
+	// group.Id 为 0 时，表示新设备
+	deviceCount, err := dao.Device.Ctx(ctx).Where("group_id", 0).Count()
+	if err != nil {
+		return nil, err
+	}
+
+	res.List = append(res.List, v1.Group{
+		Id:          0,
+		Name:        "新设备",
+		Description: "未分组的设备,请及时分组",
+		DeviceCount: deviceCount,
+		CreatedAt:   "",
+		UpdatedAt:   "",
+	})
+
+	// 获取每个分组的设备数量
 	for _, group := range groups {
+		// 查询设备数量
+		deviceCount, err := dao.Device.Ctx(ctx).Where("group_id", group.Id).Count()
+		if err != nil {
+			return nil, err
+		}
+
 		res.List = append(res.List, v1.Group{
 			Id:          int64(group.Id),
 			Name:        group.Name,
 			Description: group.Description,
+			DeviceCount: deviceCount,
 			CreatedAt:   group.CreatedAt.String(),
 			UpdatedAt:   group.UpdatedAt.String(),
 		})

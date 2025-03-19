@@ -4,6 +4,7 @@ export interface GroupItem {
   id: number;
   name: string;
   description: string;
+  deviceCount: number;
   createdAt: string;
   updatedAt: string;
 }

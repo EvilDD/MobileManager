@@ -44,16 +44,22 @@ const pagination = ref({
 const filteredGroups = computed(() => {
   // 过滤用户定义的分组（不包括"新设备"）
   const userGroups = groups.value.filter(group => group.id !== 0);
+  // 查找新设备组
+  const newDeviceGroup = groups.value.find(group => group.id === 0) || {
+    id: 0,
+    name: "新设备",
+    description: "未分组的设备",
+    deviceCount: 0,
+    createdAt: "",
+    updatedAt: ""
+  };
   
   if (!groupSearchKeyword.value) {
-    return [
-      { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
-      ...userGroups
-    ];
+    return [newDeviceGroup, ...userGroups];
   }
   
   return [
-    { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
+    newDeviceGroup,
     ...userGroups.filter(group =>
       group.name.toLowerCase().includes(groupSearchKeyword.value.toLowerCase())
     )
@@ -64,12 +70,17 @@ const filteredGroups = computed(() => {
 provide("groupsList", computed(() => {
   // 过滤用户定义的分组（不包括"新设备"）
   const userGroups = groups.value.filter(group => group.id !== 0);
+  // 查找新设备组
+  const newDeviceGroup = groups.value.find(group => group.id === 0) || {
+    id: 0,
+    name: "新设备",
+    description: "未分组的设备",
+    deviceCount: 0,
+    createdAt: "",
+    updatedAt: ""
+  };
   
-  // 确保新设备放在第一位，但是在GroupBadge组件中会过滤掉
-  return [
-    { id: 0, name: "新设备", description: "", createdAt: "", updatedAt: "" },
-    ...userGroups
-  ];
+  return [newDeviceGroup, ...userGroups];
 }));
 
 // 当前选中的分组
@@ -225,6 +236,7 @@ const editingGroup = ref<GroupItem>({
   id: 0,
   name: "",
   description: "",
+  deviceCount: 0,
   createdAt: "",
   updatedAt: ""
 });
@@ -264,6 +276,7 @@ const handleEditDialogClose = () => {
     id: 0,
     name: "",
     description: "",
+    deviceCount: 0,
     createdAt: "",
     updatedAt: ""
   };
@@ -336,7 +349,7 @@ onMounted(() => {
             <div class="group-info">
               <div class="group-name">{{ group.name }}</div>
               <div class="group-count">
-                {{ getDeviceCountByGroupId(group.id) }} 台设备
+                {{ group.deviceCount }} 台设备
               </div>
             </div>
             <!-- 添加删除图标，新设备分组不显示 -->
