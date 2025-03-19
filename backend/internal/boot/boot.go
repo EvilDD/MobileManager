@@ -47,7 +47,7 @@ func initTables(ctx gctx.Ctx) error {
 			"name" VARCHAR(100) NOT NULL,
 			"device_id" VARCHAR(100) NOT NULL UNIQUE,
 			"status" VARCHAR(20) DEFAULT 'offline',
-			"group_id" INTEGER,
+			"group_id" INTEGER DEFAULT 0,
 			"created_at" DATETIME,
 			"updated_at" DATETIME,
 			FOREIGN KEY ("group_id") REFERENCES "group" ("id")
