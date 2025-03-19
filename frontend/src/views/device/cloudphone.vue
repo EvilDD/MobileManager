@@ -91,8 +91,6 @@ const getGroups = async () => {
       keyword: groupSearchKeyword.value
     });
 
-    console.log("分组列表API响应:", res);
-
     // 检查响应结构
     if (res && res.data && res.data.list) {
       // 直接使用后端返回的分组列表，不添加"新设备"
