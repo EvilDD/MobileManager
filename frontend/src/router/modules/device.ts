@@ -1,6 +1,6 @@
 export default {
-  path: "/instance",
-  redirect: "/instance/cloudphone",
+  path: "/device",
+  redirect: "/device/cloudphone",
   meta: {
     icon: "ri:smartphone-line",
     title: "云手机管理",
@@ -9,9 +9,9 @@ export default {
   },
   children: [
     {
-      path: "/instance/cloudphone",
+      path: "/device/cloudphone",
       name: "CloudPhone",
-      component: () => import("@/views/instance/cloudphone.vue"),
+      component: () => import("@/views/device/cloudphone.vue"),
       meta: {
         title: "云手机管理",
         icon: "ri:smartphone-line"

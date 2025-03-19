@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
-import { getInstanceList, type Instance } from "@/api/instance";
+import {
+  getGroupList,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  type GroupItem
+} from "@/api/group";
+import {
+  getDeviceList,
+  type Device,
+  type DeviceListResult
+} from "@/api/device";
 import GroupBadge from "./components/GroupBadge.vue";
 import {
   Plus,
@@ -16,16 +27,18 @@ defineOptions({
 });
 
 // 分组数据
-const groups = ref([
-  { id: 0, name: "全部", count: 0 },
-  { id: 1, name: "分组一", count: 0 },
-  { id: 2, name: "分组二", count: 0 },
-  { id: 3, name: "分组三", count: 0 },
-  { id: 4, name: "未分组", count: 0 }
+const groups = ref<GroupItem[]>([
+  { id: 0, name: "全部", description: "", createdAt: "", updatedAt: "" }
 ]);
 
 // 分组搜索关键词
 const groupSearchKeyword = ref("");
+
+// 分页参数
+const pagination = ref({
+  page: 1,
+  pageSize: 10
+});
 
 // 过滤后的分组
 const filteredGroups = computed(() => {
@@ -33,7 +46,7 @@ const filteredGroups = computed(() => {
     return groups.value;
   }
   return groups.value.filter(group =>
-    group.name.includes(groupSearchKeyword.value)
+    group.name.toLowerCase().includes(groupSearchKeyword.value.toLowerCase())
   );
 });
 
@@ -43,47 +56,57 @@ const activeGroup = ref(0);
 // 搜索输入
 const searchInput = ref("");
 
-// 云手机实例列表
+// 云手机设备列表
 const loading = ref(false);
-const instances = ref<Instance[]>([]);
+const devices = ref<Device[]>([]);
 
-// 获取实例列表
-const getPhoneList = async () => {
+// 获取分组列表
+const getGroups = async () => {
+  try {
+    const res = await getGroupList({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      keyword: groupSearchKeyword.value
+    });
+
+    console.log("分组列表API响应:", res);
+
+    // 检查响应结构
+    if (res && res.list) {
+      // 添加"全部"选项
+      groups.value = [
+        { id: 0, name: "全部", description: "", createdAt: "", updatedAt: "" },
+        ...res.list
+      ];
+    } else {
+      console.error("分组列表数据格式不符合预期:", res);
+      ElMessage.warning("获取分组列表数据格式不正确");
+    }
+  } catch (error) {
+    console.error("获取分组列表失败:", error);
+    ElMessage.error("获取分组列表失败");
+  }
+};
+
+// 获取设备列表
+const getDevices = async () => {
   try {
     loading.value = true;
-    const res = await getInstanceList({
+    const res = await getDeviceList({
       page: 1,
       size: 50
     });
     if (res.code === 0) {
-      // 模拟按分组筛选
+      // 根据分组ID筛选
       if (activeGroup.value === 0) {
         // 全部
-        instances.value = res.data.instances;
-      } else if (activeGroup.value >= 1 && activeGroup.value <= 3) {
-        // 根据分组ID筛选
-        const groupIndex = activeGroup.value - 1;
-        instances.value = res.data.instances.filter(
-          (_, index) => index % 4 === groupIndex
-        );
+        devices.value = res.data.devices;
       } else {
-        // 未分组
-        instances.value = res.data.instances.filter(
-          (_, index) => index % 4 === 3
+        // 按分组筛选
+        devices.value = res.data.devices.filter(
+          device => device.info_entity.group_id === activeGroup.value
         );
       }
-
-      // 更新分组计数
-      groups.value[0].count = res.data.total;
-      // 这里假设每个分组的数量，实际应该根据后端返回的数据计算
-      groups.value[1].count = Math.floor(res.data.total / 4);
-      groups.value[2].count = Math.floor(res.data.total / 3);
-      groups.value[3].count = Math.floor(res.data.total / 5);
-      groups.value[4].count =
-        res.data.total -
-        groups.value[1].count -
-        groups.value[2].count -
-        groups.value[3].count;
     } else {
       ElMessage.error(res.message || "获取云手机列表失败");
     }
@@ -98,28 +121,66 @@ const getPhoneList = async () => {
 // 切换分组
 const changeGroup = (groupId: number) => {
   activeGroup.value = groupId;
-  // 这里应该根据分组ID重新获取数据
-  getPhoneList();
+  getDevices();
 };
 
+// 添加新分组对话框
+const showAddGroupDialog = ref(false);
+const newGroup = ref({
+  name: "",
+  description: ""
+});
+
 // 添加新分组
-const addNewGroup = () => {
-  ElMessage.info("添加新分组功能待实现");
+const addNewGroup = async () => {
+  try {
+    if (!newGroup.value.name) {
+      ElMessage.warning("请输入分组名称");
+      return;
+    }
+    await createGroup(newGroup.value);
+    ElMessage.success("添加分组成功");
+    showAddGroupDialog.value = false;
+    newGroup.value = { name: "", description: "" };
+    getGroups();
+  } catch (error) {
+    console.error("添加分组失败:", error);
+    ElMessage.error("添加分组失败");
+  }
 };
 
 // 刷新分组列表
 const refreshGroups = () => {
-  ElMessage.success("正在刷新分组列表");
-  getPhoneList();
+  getGroups();
+  getDevices();
 };
 
 // 连接到云手机
-const connectToPhone = (instance: Instance) => {
-  ElMessage.success(`连接到云手机: ${instance.info_entity.id}`);
+const connectToPhone = (device: Device) => {
+  ElMessage.success(`连接到云手机: ${device.info_entity.id}`);
+};
+
+// 修改设备过滤逻辑
+const getDeviceCountByGroupId = (groupId: number) => {
+  return devices.value.filter(
+    device => device.info_entity.group_id === groupId
+  ).length;
+};
+
+// 处理对话框关闭
+const handleCloseDialog = () => {
+  showAddGroupDialog.value = false;
+  newGroup.value = { name: "", description: "" };
+};
+
+// 处理确认添加新分组
+const handleConfirmAddGroup = () => {
+  addNewGroup();
 };
 
 onMounted(() => {
-  getPhoneList();
+  getGroups();
+  getDevices();
 });
 </script>
 
@@ -146,7 +207,7 @@ onMounted(() => {
               type="primary"
               size="small"
               circle
-              @click="addNewGroup"
+              @click="() => showAddGroupDialog = true"
               class="action-btn"
             >
               <el-icon><Plus /></el-icon>
@@ -183,7 +244,9 @@ onMounted(() => {
             </div>
             <div class="group-info">
               <div class="group-name">{{ group.name }}</div>
-              <div class="group-count">{{ group.count }} 台设备</div>
+              <div class="group-count">
+                {{ getDeviceCountByGroupId(group.id) }} 台设备
+              </div>
             </div>
           </div>
         </div>
@@ -223,30 +286,30 @@ onMounted(() => {
       <!-- 云手机列表 -->
       <div class="phone-grid" v-loading="loading">
         <div
-          v-for="instance in instances"
-          :key="instance.info_entity.id"
+          v-for="device in devices"
+          :key="device.info_entity.id"
           class="phone-card"
-          @click="connectToPhone(instance)"
+          @click="connectToPhone(device)"
         >
           <div class="phone-preview">
             <div
               class="phone-status"
-              :class="{ online: instance.info_entity.status === 'allow_alloc' }"
+              :class="{ online: device.info_entity.status === 'allow_alloc' }"
             />
             <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
             <GroupBadge
-              :group-id="(instance.info_entity.id % 4) + 1"
+              :group-id="(device.info_entity.id % 4) + 1"
               class="preview-badge"
             />
           </div>
           <div class="phone-info">
-            <div class="phone-name">云手机 #{{ instance.info_entity.id }}</div>
-            <div class="phone-ip">{{ instance.info_entity.inner_ip_v_4 }}</div>
+            <div class="phone-name">云手机 #{{ device.info_entity.id }}</div>
+            <div class="phone-ip">{{ device.info_entity.inner_ip_v_4 }}</div>
             <div class="phone-type">
               {{
-                instance.info_entity.inst_type === 0
+                device.info_entity.inst_type === 0
                   ? "房间实例"
-                  : instance.info_entity.inst_type === 1
+                  : device.info_entity.inst_type === 1
                     ? "衣服实例"
                     : "人物实例"
               }}
@@ -255,11 +318,41 @@ onMounted(() => {
         </div>
 
         <!-- 当没有数据时显示 -->
-        <div v-if="instances.length === 0 && !loading" class="no-data">
+        <div v-if="devices.length === 0 && !loading" class="no-data">
           暂无云手机数据
         </div>
       </div>
     </div>
+
+    <!-- 添加分组对话框 -->
+    <el-dialog
+      v-model="showAddGroupDialog"
+      title="添加分组"
+      width="30%"
+      :close-on-click-modal="false"
+      @close="handleCloseDialog"
+    >
+      <el-form :model="newGroup" label-width="80px">
+        <el-form-item label="分组名称">
+          <el-input v-model="newGroup.name" placeholder="请输入分组名称" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input
+            v-model="newGroup.description"
+            type="textarea"
+            placeholder="请输入分组描述"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleCloseDialog">取消</el-button>
+          <el-button type="primary" @click="handleConfirmAddGroup"
+            >确定</el-button
+          >
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
