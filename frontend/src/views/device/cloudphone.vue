@@ -20,7 +20,8 @@ import {
   Grid,
   ArrowDown,
   Search,
-  Delete
+  Delete,
+  Edit
 } from "@element-plus/icons-vue";
 
 defineOptions({
@@ -229,6 +230,56 @@ const confirmDeleteGroup = (group: GroupItem, event: MouseEvent) => {
   });
 };
 
+// 编辑分组对话框
+const showEditGroupDialog = ref(false);
+const editingGroup = ref<GroupItem>({
+  id: 0,
+  name: "",
+  description: "",
+  createdAt: "",
+  updatedAt: ""
+});
+
+// 编辑分组
+const editGroup = (group: GroupItem, event: MouseEvent) => {
+  event.stopPropagation();
+  editingGroup.value = { ...group };
+  showEditGroupDialog.value = true;
+};
+
+// 保存编辑的分组
+const saveEditGroup = async () => {
+  try {
+    if (!editingGroup.value.name) {
+      ElMessage.warning("请输入分组名称");
+      return;
+    }
+    await updateGroup({
+      id: editingGroup.value.id,
+      name: editingGroup.value.name,
+      description: editingGroup.value.description
+    });
+    ElMessage.success("更新分组成功");
+    showEditGroupDialog.value = false;
+    getGroups();
+  } catch (error) {
+    console.error("更新分组失败:", error);
+    ElMessage.error("更新分组失败");
+  }
+};
+
+// 处理编辑对话框关闭
+const handleEditDialogClose = () => {
+  showEditGroupDialog.value = false;
+  editingGroup.value = {
+    id: 0,
+    name: "",
+    description: "",
+    createdAt: "",
+    updatedAt: ""
+  };
+};
+
 onMounted(() => {
   getGroups();
   getDevices();
@@ -303,14 +354,20 @@ onMounted(() => {
             <div v-if="group.id > 0" class="group-actions">
               <el-button
                 size="small"
-                type="danger"
-                icon="Delete"
+                type="primary"
                 circle
-                plain
-                @click="e => confirmDeleteGroup(group, e)"
-              >
-                <el-icon><Delete /></el-icon>
-              </el-button>
+                class="action-btn"
+                :icon="Edit"
+                @click="editGroup(group, $event)"
+              />
+              <el-button
+                size="small"
+                type="danger"
+                circle
+                class="action-btn"
+                :icon="Delete"
+                @click="confirmDeleteGroup(group, $event)"
+              />
             </div>
           </div>
         </div>
@@ -414,6 +471,33 @@ onMounted(() => {
           <el-button type="primary" @click="handleConfirmAddGroup"
             >确定</el-button
           >
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑分组对话框 -->
+    <el-dialog
+      v-model="showEditGroupDialog"
+      title="编辑分组"
+      width="30%"
+      @close="handleEditDialogClose"
+    >
+      <el-form>
+        <el-form-item label="分组名称">
+          <el-input v-model="editingGroup.name" placeholder="请输入分组名称" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input
+            v-model="editingGroup.description"
+            type="textarea"
+            placeholder="请输入分组描述"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleEditDialogClose">取消</el-button>
+          <el-button type="primary" @click="saveEditGroup">确定</el-button>
         </span>
       </template>
     </el-dialog>
@@ -523,17 +607,12 @@ onMounted(() => {
 }
 
 .group-actions {
-  opacity: 0.5;
-  transition: opacity 0.3s;
+  display: none;
+  gap: 8px;
 }
 
 .group-item:hover .group-actions {
-  opacity: 1;
-}
-
-.group-actions .el-button {
-  padding: 4px;
-  font-size: 12px;
+  display: flex;
 }
 
 .group-name {
