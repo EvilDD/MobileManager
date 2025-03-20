@@ -10,7 +10,7 @@
     <div class="phone-frame">
       <div class="phone-notch" />
       <device-stream 
-        v-if="visible && deviceId" 
+        v-if="visible && deviceId && isReady" 
         :device-id="deviceId" 
         :auto-connect="true"
         @stream-ready="onStreamReady"
@@ -40,6 +40,8 @@ const emit = defineEmits(['update:modelValue', 'closed']);
 
 // 组件内部是否可见（用于延迟销毁iframe）
 const visible = ref(false);
+// 对话框是否准备好（用于延迟加载iframe）
+const isReady = ref(false);
 const dialogRef = ref<HTMLElement | null>(null);
 
 // 拖拽相关状态
@@ -55,6 +57,16 @@ const initialPosition = ref({ x: 0, y: 0 });
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     visible.value = true;
+    // 添加一个小延迟，确保对话框完全打开后再加载iframe
+    setTimeout(() => {
+      isReady.value = true;
+    }, 100);
+  } else {
+    isReady.value = false;
+    setTimeout(() => {
+      visible.value = false;
+      emit('closed');
+    }, 200);
   }
 });
 
