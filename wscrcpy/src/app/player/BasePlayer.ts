@@ -210,21 +210,18 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
         udid: string,
         displayInfo?: DisplayInfo,
     ): boolean {
-        if (!window.localStorage) {
-            return false;
-        }
-        let parsedValue = false;
         const key = `${this.getFullStorageKey(storageKeyPrefix, udid, displayInfo)}:fit`;
-        const saved = window.localStorage.getItem(key);
-        if (!saved) {
-            return false;
-        }
+        let result = true; // 默认设置为true，确保视频始终使用Fit模式
         try {
-            parsedValue = JSON.parse(saved);
-        } catch (error: any) {
-            console.error(`[${this.name}]`, 'Failed to parse', saved);
+            const value = window.localStorage.getItem(key);
+            if (value) {
+                result = JSON.parse(value) === true;
+            }
+            // 即使本地存储中没有设置，也返回true
+        } catch (e) {
+            console.error(`Error in getFitToScreenFromStorage for "${key}": ${e}`);
         }
-        return parsedValue;
+        return result;
     }
 
     public static getVideoSettingFromStorage(

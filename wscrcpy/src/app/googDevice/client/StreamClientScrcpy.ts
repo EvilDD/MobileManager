@@ -89,12 +89,9 @@ export class StreamClientScrcpy
         return new playerClass(udid, displayInfo);
     }
 
-    public static getFitToScreen(playerName: string, udid: string, displayInfo?: DisplayInfo): boolean {
-        const playerClass = this.getPlayerClass(playerName);
-        if (!playerClass) {
-            return false;
-        }
-        return playerClass.getFitToScreenStatus(udid, displayInfo);
+    public static getFitToScreen(): boolean {
+        // 永远返回true，确保视频始终使用Fit模式
+        return true;
     }
 
     public static start(
@@ -280,7 +277,7 @@ export class StreamClientScrcpy
                 throw Error(`Unsupported player: "${playerName}"`);
             }
             if (typeof fitToScreen !== 'boolean') {
-                fitToScreen = StreamClientScrcpy.getFitToScreen(playerName, udid, displayInfo);
+                fitToScreen = StreamClientScrcpy.getFitToScreen();
             }
             player = p;
         }

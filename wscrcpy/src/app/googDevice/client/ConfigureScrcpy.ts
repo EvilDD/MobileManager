@@ -380,9 +380,10 @@ export class ConfigureScrcpy extends BaseClient<ParamsStreamScrcpy, ConfigureScr
 
     private getFitToScreenValue(): boolean {
         if (!this.fitToScreenCheckbox) {
-            return false;
+            return true;
         }
-        return this.fitToScreenCheckbox.checked;
+        this.fitToScreenCheckbox.checked = true;
+        return true;
     }
 
     private getPreviouslyUsedPlayer(): string {
