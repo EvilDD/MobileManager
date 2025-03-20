@@ -75,26 +75,22 @@
     position: relative;
     width: 100%;
     height: 100%;
-    overflow: hidden;
-    background-color: transparent;
     display: flex;
-    justify-content: center;
-    align-items: center;
+    flex-direction: column;
+    background: #000;
   }
   
   .device-stream-loading {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    right: 0;
+    bottom: 0;
     display: flex;
-    flex-direction: column;
-    justify-content: center;
     align-items: center;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    z-index: 2;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 10;
   }
   
   .loading-icon {
@@ -113,16 +109,59 @@
   }
   
   .device-stream-frame {
-    position: absolute;
-    top: 0;
-    left: 0;
+    flex: 1;
     width: 100%;
-    height: 100%;
+    height: 0;
+    min-height: 0;
     border: none;
-    background-color: transparent;
-    transform-origin: center;
-    /* 修复chrome的iframe渲染问题 */
-    -webkit-transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
+    background: transparent;
+    display: block;
+  }
+  
+  /* 修改 wscrcpy 中的样式 */
+  :deep(.control-panel) {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: rgba(0, 0, 0, 0.8) !important;
+    padding: 8px !important;
+    z-index: 100 !important;
+    display: flex !important;
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+  
+  :deep(.control-panel button) {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: white !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    transition: all 0.3s !important;
+  }
+  
+  :deep(.control-panel button:hover) {
+    background: rgba(255, 255, 255, 0.2) !important;
+  }
+  
+  :deep(.control-panel button:active) {
+    background: rgba(255, 255, 255, 0.3) !important;
+  }
+  
+  :deep(.device-screen) {
+    height: calc(100% - 40px) !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+  }
+  
+  :deep(.device-screen canvas) {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
   }
   </style>

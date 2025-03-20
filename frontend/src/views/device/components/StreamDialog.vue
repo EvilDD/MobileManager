@@ -1,6 +1,6 @@
 <template>
-  <div v-if="modelValue" class="stream-window">
-    <div class="stream-header">
+  <div v-if="modelValue" class="stream-window" ref="dialogRef">
+    <div class="stream-header" @mousedown="startDrag">
       <span class="stream-title">周老师 (127.0.0.1:16480)</span>
       <button class="close-button" @click="closeDialog">
         <el-icon><Close /></el-icon>
@@ -16,11 +16,12 @@
         @stream-ready="onStreamReady"
       />
     </div>
+    <div class="resize-handle" @mousedown="startResize"/>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import DeviceStream from './DeviceStream.vue';
 import { Close } from '@element-plus/icons-vue';
 
@@ -39,6 +40,16 @@ const emit = defineEmits(['update:modelValue', 'closed']);
 
 // 组件内部是否可见（用于延迟销毁iframe）
 const visible = ref(false);
+const dialogRef = ref<HTMLElement | null>(null);
+
+// 拖拽相关状态
+const isDragging = ref(false);
+const dragOffset = ref({ x: 0, y: 0 });
+
+// 缩放相关状态
+const isResizing = ref(false);
+const initialSize = ref({ width: 0, height: 0 });
+const initialPosition = ref({ x: 0, y: 0 });
 
 // 监听显示状态
 watch(() => props.modelValue, (newVal) => {
@@ -60,6 +71,96 @@ const closeDialog = () => {
     emit('closed');
   }, 200);
 };
+
+// 开始拖拽
+const startDrag = (e: MouseEvent) => {
+  if (!dialogRef.value) return;
+  
+  isDragging.value = true;
+  const rect = dialogRef.value.getBoundingClientRect();
+  
+  // 在开始拖拽时，先设置当前位置，移除居中定位
+  dialogRef.value.style.top = `${rect.top}px`;
+  dialogRef.value.style.left = `${rect.left}px`;
+  dialogRef.value.style.transform = 'none';
+  
+  dragOffset.value = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+  
+  document.addEventListener('mousemove', handleDrag);
+  document.addEventListener('mouseup', stopDrag);
+};
+
+// 处理拖拽
+const handleDrag = (e: MouseEvent) => {
+  if (!isDragging.value || !dialogRef.value) return;
+  
+  const newX = e.clientX - dragOffset.value.x;
+  const newY = e.clientY - dragOffset.value.y;
+  
+  dialogRef.value.style.left = `${newX}px`;
+  dialogRef.value.style.top = `${newY}px`;
+};
+
+// 停止拖拽
+const stopDrag = () => {
+  isDragging.value = false;
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', stopDrag);
+};
+
+// 开始缩放
+const startResize = (e: MouseEvent) => {
+  if (!dialogRef.value) return;
+  
+  isResizing.value = true;
+  const rect = dialogRef.value.getBoundingClientRect();
+  
+  initialSize.value = {
+    width: rect.width,
+    height: rect.height
+  };
+  
+  initialPosition.value = {
+    x: e.clientX,
+    y: e.clientY
+  };
+  
+  document.addEventListener('mousemove', handleResize);
+  document.addEventListener('mouseup', stopResize);
+};
+
+// 处理缩放
+const handleResize = (e: MouseEvent) => {
+  if (!isResizing.value || !dialogRef.value) return;
+  
+  const deltaX = e.clientX - initialPosition.value.x;
+  const deltaY = e.clientY - initialPosition.value.y;
+  
+  const newWidth = Math.max(400, initialSize.value.width + deltaX);
+  const newHeight = Math.max(600, initialSize.value.height + deltaY);
+  
+  dialogRef.value.style.width = `${newWidth}px`;
+  dialogRef.value.style.height = `${newHeight}px`;
+};
+
+// 停止缩放
+const stopResize = () => {
+  isResizing.value = false;
+  document.removeEventListener('mousemove', handleResize);
+  document.removeEventListener('mouseup', stopResize);
+};
+
+// 组件卸载前清理事件监听
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', stopDrag);
+  document.removeEventListener('mousemove', handleResize);
+  document.removeEventListener('mouseup', stopResize);
+});
+
 </script>
 
 <style scoped>
@@ -77,6 +178,10 @@ const closeDialog = () => {
   display: flex;
   flex-direction: column;
   z-index: 2000;
+  user-select: none;
+  /* 移除这些属性，让初始状态保持居中 */
+  /* transform: none;
+  transition: none; */
 }
 
 .stream-header {
@@ -85,6 +190,7 @@ const closeDialog = () => {
   align-items: center;
   padding: 12px 16px;
   background-color: #1a1a1a;
+  cursor: move;
 }
 
 .stream-title {
@@ -149,6 +255,28 @@ const closeDialog = () => {
 
 :deep(.device-stream-frame) {
   border-radius: 30px;
+}
+
+/* 添加缩放手柄样式 */
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  z-index: 10;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid rgba(255, 255, 255, 0.5);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.5);
 }
 
 @media (max-width: 768px) {
