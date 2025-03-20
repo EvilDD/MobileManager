@@ -14,6 +14,7 @@ import (
 	"backend/internal/controller/device"
 	groupctl "backend/internal/controller/group"
 	"backend/internal/controller/hello"
+	"backend/internal/controller/scrcpy"
 )
 
 var (
@@ -52,6 +53,7 @@ var (
 					hello.NewV1(),
 					device.NewV1(),
 					groupctl.NewV1(),
+					scrcpy.NewV1(),
 				)
 			})
 

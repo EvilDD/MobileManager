@@ -15,43 +15,9 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/devices/list": {
-            "get": {
-                "description": "获取云手机设备列表，支持分页、关键字搜索和分组筛选",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "设备管理"
-                ],
-                "summary": "获取设备列表",
-                "parameters": [
-                    {
-                        "description": "请求参数",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.DeviceListReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "返回结果",
-                        "schema": {
-                            "$ref": "#/definitions/model.DeviceListRes"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/groups/create": {
+        "/scrcpy/stream/start": {
             "post": {
-                "description": "创建新的云手机分组",
+                "description": "为指定设备启动scrcpy流服务，返回WebSocket连接地址",
                 "consumes": [
                     "application/json"
                 ],
@@ -59,9 +25,9 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "分组管理"
+                    "串流管理"
                 ],
-                "summary": "创建分组",
+                "summary": "启动设备流服务",
                 "parameters": [
                     {
                         "description": "请求参数",
@@ -69,23 +35,23 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/model.GroupCreateReq"
+                            "$ref": "#/definitions/v1.StartStreamReq"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "返回结果",
+                        "description": "OK",
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/v1.StartStreamRes"
                         }
                     }
                 }
             }
         },
-        "/api/v1/groups/delete": {
-            "delete": {
-                "description": "删除云手机分组，只有当分组下没有设备时才能删除",
+        "/scrcpy/stream/stop": {
+            "post": {
+                "description": "停止指定设备的scrcpy流服务",
                 "consumes": [
                     "application/json"
                 ],
@@ -93,9 +59,9 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "分组管理"
+                    "串流管理"
                 ],
-                "summary": "删除分组",
+                "summary": "停止设备流服务",
                 "parameters": [
                     {
                         "description": "请求参数",
@@ -103,83 +69,15 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/controller.GroupDeleteReq"
+                            "$ref": "#/definitions/v1.StopStreamReq"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "返回结果",
+                        "description": "OK",
                         "schema": {
-                            "type": "object"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/groups/list": {
-            "get": {
-                "description": "获取云手机分组列表，支持分页和关键字搜索",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "分组管理"
-                ],
-                "summary": "获取分组列表",
-                "parameters": [
-                    {
-                        "description": "请求参数",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.GroupListReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "返回结果",
-                        "schema": {
-                            "$ref": "#/definitions/model.GroupListRes"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/groups/update": {
-            "put": {
-                "description": "更新云手机分组信息",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "分组管理"
-                ],
-                "summary": "更新分组",
-                "parameters": [
-                    {
-                        "description": "请求参数",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.GroupUpdateReq"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "返回结果",
-                        "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/v1.StopStreamRes"
                         }
                     }
                 }
@@ -187,189 +85,59 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "controller.GroupDeleteReq": {
+        "v1.StartStreamReq": {
+            "description": "启动设备流请求参数",
             "type": "object",
             "properties": {
-                "id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "model.Device": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
                 "deviceId": {
-                    "type": "string"
-                },
-                "groupId": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "127.0.0.1:16480"
                 }
             }
         },
-        "model.DeviceListReq": {
+        "v1.StartStreamRes": {
+            "description": "启动设备流响应参数",
             "type": "object",
             "properties": {
-                "groupId": {
-                    "description": "分组ID",
-                    "type": "integer"
+                "port": {
+                    "type": "integer",
+                    "example": 8886
                 },
-                "keyword": {
-                    "description": "搜索关键词",
-                    "type": "string"
-                },
-                "page": {
-                    "description": "页码",
-                    "type": "integer"
-                },
-                "pageSize": {
-                    "description": "每页数量",
-                    "type": "integer"
+                "url": {
+                    "type": "string",
+                    "example": "ws://localhost:8886"
                 }
             }
         },
-        "model.DeviceListRes": {
+        "v1.StopStreamReq": {
+            "description": "停止设备流请求参数",
             "type": "object",
             "properties": {
-                "list": {
-                    "description": "设备列表",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.Device"
-                    }
-                },
-                "page": {
-                    "description": "页码",
-                    "type": "integer"
-                },
-                "pageSize": {
-                    "description": "每页数量",
-                    "type": "integer"
-                },
-                "total": {
-                    "description": "总数",
-                    "type": "integer"
+                "deviceId": {
+                    "type": "string",
+                    "example": "127.0.0.1:16480"
                 }
             }
         },
-        "model.Group": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "model.GroupCreateReq": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "description": "分组描述",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "分组名称",
-                    "type": "string"
-                }
-            }
-        },
-        "model.GroupListReq": {
-            "type": "object",
-            "properties": {
-                "keyword": {
-                    "description": "搜索关键词",
-                    "type": "string"
-                },
-                "page": {
-                    "description": "页码",
-                    "type": "integer"
-                },
-                "pageSize": {
-                    "description": "每页数量",
-                    "type": "integer"
-                }
-            }
-        },
-        "model.GroupListRes": {
-            "type": "object",
-            "properties": {
-                "list": {
-                    "description": "分组列表",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.Group"
-                    }
-                },
-                "page": {
-                    "description": "页码",
-                    "type": "integer"
-                },
-                "pageSize": {
-                    "description": "每页数量",
-                    "type": "integer"
-                },
-                "total": {
-                    "description": "总数",
-                    "type": "integer"
-                }
-            }
-        },
-        "model.GroupUpdateReq": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "description": "分组描述",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "分组ID",
-                    "type": "integer"
-                },
-                "name": {
-                    "description": "分组名称",
-                    "type": "string"
-                }
-            }
+        "v1.StopStreamRes": {
+            "description": "停止设备流响应参数",
+            "type": "object"
         }
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
-	Host:             "localhost:8001",
-	BasePath:         "/",
-	Schemes:          []string{"http"},
-	Title:            "云手机平台API",
-	Description:      "云手机平台API文档",
+	Version:          "",
+	Host:             "",
+	BasePath:         "",
+	Schemes:          []string{},
+	Title:            "",
+	Description:      "",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
+	LeftDelim:        "{{",
+	RightDelim:       "}}",
 }
 
 func init() {
