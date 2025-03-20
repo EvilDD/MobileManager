@@ -256,9 +256,17 @@ export class StreamClientScrcpy
         this.filePushHandler = undefined;
         this.touchHandler?.release();
         this.touchHandler = undefined;
+        
+        // 从DOM中移除控制按钮
+        if (this.controlButtons && this.controlButtons.parentElement) {
+            this.controlButtons.parentElement.removeChild(this.controlButtons);
+        }
     };
 
     public startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): void {
+        // 总是强制设置fitToScreen为true
+        fitToScreen = true;
+        
         if (!udid) {
             throw Error(`Invalid udid value: "${udid}"`);
         }
@@ -319,20 +327,22 @@ export class StreamClientScrcpy
         const video = document.createElement('div');
         video.className = 'video';
         
-        deviceView.appendChild(this.controlButtons);
+        // 先添加视频容器，后添加控制按钮（控制按钮在CSS中设置为固定在底部）
         deviceView.appendChild(video);
         deviceView.appendChild(moreBox);
+        document.body.appendChild(this.controlButtons); // 直接添加到body，使用固定定位
         
         player.setParent(video);
         player.pause();
 
         document.body.appendChild(deviceView);
-        if (fitToScreen) {
-            const newBounds = this.getMaxSize();
-            if (newBounds) {
-                videoSettings = StreamClientScrcpy.createVideoSettingsWithBounds(videoSettings, newBounds);
-            }
+        
+        // 总是使用fitToScreen
+        const newBounds = this.getMaxSize();
+        if (newBounds) {
+            videoSettings = StreamClientScrcpy.createVideoSettingsWithBounds(videoSettings, newBounds);
         }
+        
         this.applyNewVideoSettings(videoSettings, false);
         const element = player.getTouchableElement();
         const logger = new DragAndPushLogger(element);
@@ -382,12 +392,11 @@ export class StreamClientScrcpy
     }
 
     public getMaxSize(): Size | undefined {
-        if (!this.controlButtons) {
-            return;
-        }
         const body = document.body;
-        const width = (body.clientWidth - this.controlButtons.clientWidth) & ~15;
-        const height = body.clientHeight & ~15;
+        // 控制面板现在总是在底部，需要减去控制面板高度
+        const buttonHeight = 3.715 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const width = body.clientWidth & ~15;
+        const height = (body.clientHeight - buttonHeight) & ~15;
         return new Size(width, height);
     }
 

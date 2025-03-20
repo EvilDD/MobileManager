@@ -113,16 +113,31 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     protected scaleCanvas(width: number, height: number): void {
         const videoSize = new Size(width, height);
         let scale = 1;
+        
+        // 获取屏幕尺寸
+        const availableWidth = window.innerWidth;
+        // 计算控制面板高度
+        const buttonHeight = 3.715 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const availableHeight = window.innerHeight - buttonHeight; // 减去控制面板高度
+        
+        // 根据可用空间计算缩放比例
         if (this.bounds && !this.bounds.intersect(videoSize).equals(videoSize)) {
             scale = Math.min(this.bounds.w / width, this.bounds.h / height);
+        } else {
+            scale = Math.min(availableWidth / width, availableHeight / height, 1);
         }
-        const w = width * scale;
-        const h = height * scale;
+        
+        // 确保最小缩放比例
+        scale = Math.max(scale, 0.1);
+        
+        const w = Math.max(width * scale, 200); // 确保最小宽度
+        const h = Math.max(height * scale, 200); // 确保最小高度
+        
         const screenInfo = new ScreenInfo(new Rect(0, 0, width, height), new Size(w, h), 0);
         this.emit('input-video-resize', screenInfo);
         this.setScreenInfo(screenInfo);
 
-        // FIXME: canvas was initialized from `.setScreenInfo()` call above, but with wrong values
+        // 初始化canvas
         this.initCanvas(width, height);
         if (scale !== 1) {
             this.tag.style.transform = `scale(${scale.toFixed(4)})`;
@@ -130,6 +145,10 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
             this.tag.style.transform = ``;
         }
         this.tag.style.transformOrigin = 'top left';
+        
+        // 确保视频可见的最小尺寸
+        this.tag.style.minHeight = '200px';
+        this.tag.style.minWidth = '200px';
     }
 
     protected decode(data: Uint8Array): void {
@@ -199,7 +218,8 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     }
 
     public getFitToScreenStatus(): boolean {
-        return false;
+        // 总是返回true以确保视频适应屏幕
+        return true;
     }
 
     public getPreferredVideoSetting(): VideoSettings {
