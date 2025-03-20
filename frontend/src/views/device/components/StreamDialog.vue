@@ -1,13 +1,14 @@
 <template>
-  <el-dialog
-    v-model="dialogVisible"
-    :title="title"
-    :width="dialogWidth"
-    :close-on-click-modal="false"
-    :destroy-on-close="true"
-    @closed="handleClosed"
-  >
-    <div class="stream-dialog-content">
+  <div v-if="modelValue" class="stream-window">
+    <div class="stream-header">
+      <span class="stream-title">周老师 (127.0.0.1:16480)</span>
+      <button class="close-button" @click="closeDialog">
+        <el-icon><Close /></el-icon>
+      </button>
+    </div>
+    
+    <div class="phone-frame">
+      <div class="phone-notch" />
       <device-stream 
         v-if="visible && deviceId" 
         :device-id="deviceId" 
@@ -15,17 +16,13 @@
         @stream-ready="onStreamReady"
       />
     </div>
-    <template #footer>
-      <span class="dialog-footer">
-        <el-button type="primary" @click="closeDialog">关闭</el-button>
-      </span>
-    </template>
-  </el-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import DeviceStream from './DeviceStream.vue';
+import { Close } from '@element-plus/icons-vue';
 
 const props = defineProps({
   modelValue: {
@@ -35,47 +32,16 @@ const props = defineProps({
   deviceId: {
     type: String,
     default: ''
-  },
-  deviceName: {
-    type: String,
-    default: ''
   }
 });
 
 const emit = defineEmits(['update:modelValue', 'closed']);
 
-// 对话框可见性
-const dialogVisible = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value)
-});
-
 // 组件内部是否可见（用于延迟销毁iframe）
 const visible = ref(false);
 
-// 对话框标题
-const title = computed(() => {
-  return props.deviceName 
-    ? `云手机控制: ${props.deviceName} (${props.deviceId})` 
-    : `云手机控制: ${props.deviceId}`;
-});
-
-// 对话框宽度 - 响应式
-const dialogWidth = computed(() => {
-  // 获取窗口大小来计算合适的对话框宽度
-  const windowWidth = window.innerWidth;
-  
-  if (windowWidth < 768) {
-    return '95%';
-  } else if (windowWidth < 1200) {
-    return '80%';
-  } else {
-    return '70%';
-  }
-});
-
-// 监听对话框打开状态
-watch(() => dialogVisible.value, (newVal) => {
+// 监听显示状态
+watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     visible.value = true;
   }
@@ -86,14 +52,9 @@ const onStreamReady = () => {
   // 这里可以添加流准备好后的处理逻辑
 };
 
-// 关闭对话框
+// 关闭窗口
 const closeDialog = () => {
-  dialogVisible.value = false;
-};
-
-// 对话框完全关闭后回调
-const handleClosed = () => {
-  // 延迟一点时间再设置visible为false，确保过渡动画完成
+  emit('update:modelValue', false);
   setTimeout(() => {
     visible.value = false;
     emit('closed');
@@ -102,38 +63,110 @@ const handleClosed = () => {
 </script>
 
 <style scoped>
-.stream-dialog-content {
-  position: relative;
-  width: 100%;
-  height: 600px;
-  overflow: hidden;
-  border-radius: 8px;
+.stream-window {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  height: 800px;
   background-color: #000;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  z-index: 2000;
 }
 
-@media (max-height: 768px) {
-  .stream-dialog-content {
-    height: 450px;
-  }
+.stream-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #1a1a1a;
 }
 
-@media (max-width: 768px) {
-  .stream-dialog-content {
-    height: 400px;
-  }
+.stream-title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
 }
 
-:deep(.el-dialog__body) {
+.close-button {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s ease;
   padding: 0;
 }
 
-:deep(.el-dialog__footer) {
-  padding: 10px 20px;
+.close-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: rotate(90deg);
 }
 
-:deep(.el-dialog__header) {
-  padding: 15px 20px;
-  margin-right: 0;
-  border-bottom: 1px solid #f0f0f0;
+.phone-frame {
+  position: relative;
+  flex: 1;
+  background-color: #000;
+  border-radius: 36px;
+  border: 6px solid #1a1a1a;
+  margin: 0;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 20px;
+  background-color: #1a1a1a;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+:deep(.device-stream-container) {
+  flex: 1;
+  border-radius: 30px;
+  overflow: hidden;
+  background-color: #000;
+}
+
+:deep(.device-stream-frame) {
+  border-radius: 30px;
+}
+
+@media (max-width: 768px) {
+  .stream-window {
+    width: 95vw;
+    height: 95vh;
+  }
+  
+  .phone-frame {
+    border-radius: 20px;
+    border-width: 4px;
+  }
+  
+  .phone-notch {
+    width: 100px;
+    height: 16px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
 }
 </style> 

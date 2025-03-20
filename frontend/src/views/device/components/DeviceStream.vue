@@ -49,7 +49,6 @@
   
   // iframe加载完成
   const onIframeLoaded = () => {
-    // 延迟一点时间更新loading状态，让iframe内容有时间渲染
     setTimeout(() => {
       loading.value = false;
       emit('stream-ready');
@@ -73,9 +72,7 @@
   
   <style scoped>
   .device-stream-container {
-    position: absolute;
-    top: 0;
-    left: 0;
+    position: relative;
     width: 100%;
     height: 100%;
     overflow: hidden;

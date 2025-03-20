@@ -226,13 +226,13 @@ const connectToPhone = (device: Device) => {
   // 设置选中的设备并打开对话框
   selectedDevice.value = device;
   streamDialogVisible.value = true;
-  
-  ElMessage.success(`正在连接云手机: ${device.deviceId}`);
 };
 
 // 点击截图时打开流对话框
 const handleScreenshotClick = (device: Device) => {
-  connectToPhone(device);
+  if (device.status === 'online') {
+    connectToPhone(device);
+  }
 };
 
 // 重启云手机
@@ -469,7 +469,7 @@ onMounted(() => {
             inactive-text="手动刷新"
             @change="toggleAutoRefresh"
           />
-          <el-dropdown v-if="autoRefresh" @command="changeRefreshInterval">
+          <el-dropdown v-if="autoRefresh" @command="changeRefreshInterval" trigger="click">
             <el-button type="default" size="small">
               {{ refreshInterval / 1000 }}秒 <el-icon><ArrowDown /></el-icon>
             </el-button>
@@ -496,7 +496,7 @@ onMounted(() => {
           </template>
         </el-input>
         <el-dropdown>
-          <el-button type="default" size="small">
+          <el-button type="default" size="small" trigger="click">
             全部 <el-icon><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
@@ -637,7 +637,6 @@ onMounted(() => {
     <stream-dialog
       v-model="streamDialogVisible"
       :device-id="selectedDevice?.deviceId || ''"
-      :device-name="selectedDevice?.name || ''"
       @closed="selectedDevice = null"
     />
   </div>
@@ -923,7 +922,7 @@ onMounted(() => {
   color: #fff;
 }
 
-/* DeviceScreenshot组件样式覆盖 */
+/* 修改截图容器样式，使其可点击 */
 .phone-preview :deep(.device-screenshot-container) {
   position: absolute !important;
   top: 0;
@@ -931,6 +930,18 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   background-color: transparent;
+  cursor: pointer;
+}
+
+.phone-preview :deep(.screenshot-image) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s;
+}
+
+.phone-preview :deep(.screenshot-image:hover) {
+  transform: scale(1.05);
 }
 
 .phone-actions {
