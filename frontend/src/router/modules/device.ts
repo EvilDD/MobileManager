@@ -16,6 +16,16 @@ export default {
         title: "云手机管理",
         icon: "ri:smartphone-line"
       }
+    },
+    {
+      path: "/device/detail/:id",
+      name: "DeviceDetail",
+      component: () => import("@/views/device/detail.vue"),
+      meta: {
+        title: "设备控制",
+        showLink: false,
+        hiddenTag: true
+      }
     }
   ]
 } satisfies RouteConfigsTable;

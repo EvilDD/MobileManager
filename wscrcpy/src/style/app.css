@@ -103,8 +103,10 @@ body.stream {
 
 .device-view {
     z-index: 1;
-    float: right;
-    display: inline-block;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    overflow: hidden;
 }
 
 .video-layer {
@@ -118,15 +120,16 @@ body.stream {
 }
 
 .video {
-    float: right;
+    position: relative;
+    flex: 1;
     max-height: 100%;
     max-width: 100%;
     background-color: #000000;
 }
 
-
 .control-buttons-list {
-    float: right;
+    display: flex;
+    flex-direction: column;
     width: 3.715rem;
     background-color: var(--control-buttons-bg-color);
 }
@@ -175,4 +178,74 @@ body.stream {
 
 .control-wrapper > input[type=checkbox]:checked + label > svg {
     fill: var(--svg-checkbox-bg-color);
+}
+
+@media (max-width: 480px) {
+    .device-view {
+        flex-direction: column-reverse;
+        width: 100% !important;
+        height: auto !important;
+    }
+    
+    .control-buttons-list {
+        flex-direction: row;
+        width: 100%;
+        height: 3.715rem;
+        overflow-x: auto;
+    }
+    
+    .control-button {
+        margin: .357rem;
+    }
+    
+    .more-box {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        box-sizing: border-box;
+        z-index: 10;
+    }
+    
+    .video {
+        width: 100% !important;
+        height: auto !important;
+        aspect-ratio: 9/16;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 767px) {
+    .device-view {
+        max-width: 100%;
+    }
+    
+    .video {
+        max-width: calc(100% - 3.715rem);
+    }
+}
+
+@media (min-width: 768px) {
+    .device-view {
+        max-width: 100%;
+        max-height: 100vh;
+    }
+}
+
+/* 更多选项框样式优化 */
+.more-box {
+    float: none;
+    clear: both;
+    position: absolute;
+    right: 0;
+    top: 0;
+    z-index: 2;
+    display: none;
+    padding: 10px;
+    max-height: 100%;
+    overflow-y: auto;
+    background-color: var(--controls-bg-color);
 }

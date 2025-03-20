@@ -3,17 +3,13 @@
     resize: vertical;
 }
 
-.more-box {
-    display: none;
-    position: absolute;
-    background-color: var(--controls-bg-color);
-    z-index: 2;
-    padding: 0 .714rem .714rem .714rem;
-}
-
 .text-with-shadow, .more-box label {
     color: var(--text-color);
     text-shadow: var(--text-shadow-color) 0 0 .357rem;
+}
+
+.more-box button {
+    margin: 3px;
 }
 
 .spoiler > input ~ .box {
@@ -40,4 +36,17 @@
 
 .spoiler > input {
     display: none;
+}
+
+/* 响应式调整 */
+@media (max-width: 480px) {
+    .more-box {
+        padding: 15px;
+    }
+    
+    .more-box button {
+        padding: 8px 12px;
+        margin: 5px;
+        min-width: 100px;
+    }
 }

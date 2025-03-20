@@ -14,6 +14,7 @@ import {
   type DeviceListResult
 } from "@/api/device";
 import GroupBadge from "./components/GroupBadge.vue";
+import DeviceStream from "./components/DeviceStream.vue";
 import {
   Plus,
   Refresh,
@@ -23,10 +24,13 @@ import {
   Delete,
   Edit
 } from "@element-plus/icons-vue";
+import { useRouter } from "vue-router";
 
 defineOptions({
   name: "CloudPhone"
 });
+
+const router = useRouter();
 
 // 分组数据
 const groups = ref<GroupItem[]>([]);
@@ -178,7 +182,29 @@ const refreshGroups = () => {
 
 // 连接到云手机
 const connectToPhone = (device: Device) => {
-  ElMessage.success(`连接到云手机: ${device.deviceId}`);
+  if (device.status !== 'online') {
+    ElMessage.warning(`设备 ${device.deviceId} 当前离线，无法连接`);
+    return;
+  }
+  
+  // 方式1: 导航到详情页
+  router.push({
+    path: `/device/detail/${device.deviceId}`,
+    query: {
+      name: device.name,
+      status: device.status
+    }
+  });
+  
+  // 方式2: 在新标签页打开wscrcpy（已注释）
+  /*
+  const encodedDeviceId = encodeURIComponent(device.deviceId);
+  const wsUrl = encodeURIComponent(`ws://localhost:8000/?action=proxy-adb&remote=tcp:8886&udid=${device.deviceId}`);
+  const streamUrl = `http://localhost:8000/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
+  window.open(streamUrl, '_blank');
+  */
+  
+  ElMessage.success(`已打开云手机: ${device.deviceId} 控制页面`);
 };
 
 // 重启云手机
@@ -433,7 +459,12 @@ onMounted(() => {
             />
           </div>
           <div class="phone-preview" @click="connectToPhone(device)">
-            <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
+            <DeviceStream 
+              v-if="device.status === 'online'"
+              :device-id="device.deviceId" 
+              @stream-ready="() => {}"
+            />
+            <img v-else src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
           </div>
           <div class="phone-actions">
             <el-button type="primary" size="small" class="action-button" @click="connectToPhone(device)">
@@ -742,7 +773,7 @@ onMounted(() => {
   position: relative;
   width: 100%;
   padding-top: 177.78%; /* 保持 360:640 的宽高比 */
-  background-color: #f5f7fa;
+  background-color: #fff; /* 改为白色背景 */
   overflow: hidden;
   flex-grow: 1;
 }
@@ -754,6 +785,24 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/* DeviceStream组件样式覆盖 */
+.phone-preview :deep(.device-stream-container) {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+}
+
+.phone-preview :deep(.device-stream-frame) {
+  width: 100% !important;
+  height: 100% !important;
+  border: none;
+  background-color: transparent;
+  object-fit: cover;
 }
 
 .phone-actions {

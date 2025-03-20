@@ -293,6 +293,7 @@ export class StreamClientScrcpy
 
         const deviceView = document.createElement('div');
         deviceView.className = 'device-view';
+        
         const stop = (ev?: string | Event) => {
             if (ev && ev instanceof Event && ev.type === 'error') {
                 console.error(TAG, ev);
@@ -317,11 +318,14 @@ export class StreamClientScrcpy
         googMoreBox.setOnStop(stop);
         const googToolBox = GoogToolBox.createToolBox(udid, player, this, moreBox);
         this.controlButtons = googToolBox.getHolderElement();
-        deviceView.appendChild(this.controlButtons);
+        
         const video = document.createElement('div');
         video.className = 'video';
+        
+        deviceView.appendChild(this.controlButtons);
         deviceView.appendChild(video);
         deviceView.appendChild(moreBox);
+        
         player.setParent(video);
         player.pause();
 
@@ -400,7 +404,6 @@ export class StreamClientScrcpy
     private applyNewVideoSettings(videoSettings: VideoSettings, saveToStorage: boolean): void {
         let fitToScreen = false;
 
-        // TODO: create control (switch/checkbox) instead
         if (videoSettings.bounds && videoSettings.bounds.equals(this.getMaxSize())) {
             fitToScreen = true;
         }
