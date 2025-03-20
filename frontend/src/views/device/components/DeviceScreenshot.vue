@@ -1,235 +1,320 @@
 <template>
-  <div class="device-screenshot">
-    <el-card class="screenshot-card">
-      <template #header>
-        <div class="card-header">
-          <span>设备截图</span>
-          <div class="header-controls">
-            <el-slider
-              v-model="quality"
-              :min="1"
-              :max="100"
-              :step="1"
-              class="quality-slider"
-              :disabled="loading"
-            >
-              <template #tooltip>
-                <div>图片质量: {{ quality }}%</div>
-              </template>
-            </el-slider>
-            <el-button
-              type="primary"
-              :loading="loading"
-              @click="handleCapture"
-              :disabled="!selectedDevices.length"
-            >
-              截图
-            </el-button>
-          </div>
-        </div>
-      </template>
-
-      <el-table
-        ref="tableRef"
-        :data="deviceList"
-        style="width: 100%"
-        v-loading="loading"
-        height="500"
-      >
-        <el-table-column type="selection" width="55" />
-        <el-table-column prop="deviceId" label="设备ID" width="180" />
-        <el-table-column prop="name" label="设备名称" width="180" />
-        <el-table-column label="截图预览" min-width="200">
-          <template #default="{ row }">
-            <div class="preview-container">
-              <el-image
-                v-if="row.imageData"
-                :src="row.imageData"
-                :preview-src-list="[row.imageData]"
-                fit="contain"
-                class="preview-image"
-              >
-                <template #error>
-                  <div class="image-error">
-                    <el-icon><Picture /></el-icon>
-                    <span>暂无截图</span>
-                  </div>
-                </template>
-              </el-image>
-              <div v-else class="no-image">
-                <el-icon><Picture /></el-icon>
-                <span>暂无截图</span>
-              </div>
-              <el-tag
-                v-if="row.error"
-                type="danger"
-                class="error-tag"
-              >
-                {{ row.error }}
-              </el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.imageData"
-              type="primary"
-              link
-              @click="handleDownload(row)"
-            >
-              下载
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+  <div class="device-screenshot-container" :class="{ 'loading': loading, 'error': error }">
+    <div v-if="loading" class="screenshot-loading">
+      <el-icon class="loading-icon"><Loading /></el-icon>
+      <span>获取截图中...</span>
+    </div>
+    
+    <div v-if="error" class="screenshot-error">
+      <el-icon class="error-icon"><CircleClose /></el-icon>
+      <span>{{ errorMessage }}</span>
+      <el-button size="small" type="primary" @click="captureScreenshot" class="retry-button">
+        重试
+      </el-button>
+    </div>
+    
+    <img 
+      v-if="imageData && !loading" 
+      :src="imageData" 
+      class="screenshot-image" 
+      alt="设备截图"
+      @click="handleClick"
+      @error="handleImageError"
+      @load="handleImageLoaded"
+    />
+    
+    <div v-if="!imageData && !loading && !error" class="screenshot-placeholder">
+      <el-icon><Picture /></el-icon>
+      <span>无截图</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Picture } from '@element-plus/icons-vue'
-import { captureScreenshots } from '@/api/screenshot'
-import type { DeviceScreenshot } from '@/api/screenshot'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue';
+import { captureDeviceScreenshot } from '@/api/device';
+import { ElMessage } from 'element-plus';
+import { Loading, CircleClose, Picture } from '@element-plus/icons-vue';
 
-interface Device {
-  deviceId: string
-  name: string
-  imageData?: string
-  error?: string
-}
-
-const props = defineProps<{
-  devices: Device[]
-}>()
-
-const loading = ref(false)
-const quality = ref(80)
-const tableRef = ref()
-
-// 设备列表数据
-const deviceList = ref<Device[]>([])
-
-// 监听设备列表变化
-watch(() => props.devices, (newDevices) => {
-  deviceList.value = newDevices.map(device => ({
-    ...device,
-    imageData: undefined,
-    error: undefined
-  }))
-}, { immediate: true })
-
-// 选中的设备
-const selectedDevices = computed(() => {
-  return tableRef.value?.getSelectionRows() || []
-})
-
-// 处理截图
-const handleCapture = async () => {
-  if (selectedDevices.value.length === 0) {
-    ElMessage.warning('请选择需要截图的设备')
-    return
+const props = defineProps({
+  deviceId: {
+    type: String,
+    required: true
+  },
+  autoCapture: {
+    type: Boolean,
+    default: true
+  },
+  quality: {
+    type: Number,
+    default: 80
+  },
+  refreshInterval: {
+    type: Number,
+    default: 10000 // 默认10秒刷新一次
+  },
+  autoRefresh: {
+    type: Boolean,
+    default: true
   }
+});
 
-  loading.value = true
-  try {
-    const response = await captureScreenshots({
-      deviceIds: selectedDevices.value.map(device => device.deviceId),
-      quality: quality.value
-    })
+const emit = defineEmits(['screenshot-ready', 'screenshot-error', 'click']);
 
-    // 更新设备截图数据
-    response.screenshots.forEach(screenshot => {
-      const device = deviceList.value.find(d => d.deviceId === screenshot.deviceId)
-      if (device) {
-        device.imageData = screenshot.imageData
-        device.error = screenshot.error
-      }
-    })
+const loading = ref(false);
+const error = ref(false);
+const errorMessage = ref('');
+const imageData = ref<string | null>(null);
+// 自动刷新定时器
+const refreshTimer = ref<number | null>(null);
 
-    ElMessage.success('截图完成')
-  } catch (error: any) {
-    ElMessage.error('截图失败：' + (error.message || '未知错误'))
-  } finally {
-    loading.value = false
-  }
-}
-
-// 处理下载
-const handleDownload = (device: Device) => {
-  if (!device.imageData) return
+// 获取设备截图
+const captureScreenshot = async () => {
+  if (!props.deviceId) return;
   
-  // 创建下载链接
-  const link = document.createElement('a')
-  link.href = device.imageData
-  link.download = `${device.name || device.deviceId}_screenshot.jpg`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-}
+  try {
+    loading.value = true;
+    error.value = false;
+    
+    const res = await captureDeviceScreenshot({
+      deviceId: props.deviceId,
+      quality: props.quality
+    });
+    
+    console.log("截图响应数据:", JSON.stringify(res).slice(0, 100) + "...");
+    
+    // 确保data字段存在
+    if (!res.data) {
+      console.error("截图响应缺少data字段:", res);
+      error.value = true;
+      errorMessage.value = "响应格式错误";
+      emit('screenshot-error', errorMessage.value);
+      return;
+    }
+    
+    // 判断响应是否成功
+    if (res.code === 0) {
+      let success = false;
+      let imgData = "";
+      let errMsg = "";
+      
+      // 获取正确的字段
+      if ('success' in res.data) {
+        success = res.data.success;
+      }
+      
+      if ('imageData' in res.data && res.data.imageData) {
+        imgData = res.data.imageData;
+      }
+      
+      if ('error' in res.data && res.data.error) {
+        errMsg = res.data.error;
+      }
+      
+      if (success && imgData) {
+        // 检查base64数据是否已经包含了前缀
+        if (imgData.startsWith('data:image')) {
+          imageData.value = imgData;
+        } else {
+          // 移除可能的空白字符并添加前缀
+          imageData.value = `data:image/jpeg;base64,${imgData.replace(/^[\s\r\n]+|[\s\r\n]+$/g, '')}`;
+        }
+        console.log("截图数据已获取，长度:", (imageData.value?.length || 0));
+        emit('screenshot-ready', imageData.value);
+      } else {
+        error.value = true;
+        errorMessage.value = errMsg || '获取截图失败';
+        emit('screenshot-error', errorMessage.value);
+      }
+    } else {
+      error.value = true;
+      errorMessage.value = res.message || '截图请求失败';
+      emit('screenshot-error', errorMessage.value);
+    }
+  } catch (err) {
+    error.value = true;
+    errorMessage.value = '获取截图请求失败';
+    emit('screenshot-error', errorMessage.value);
+    console.error('截图请求失败:', err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 开始自动刷新
+const startAutoRefresh = () => {
+  if (!props.autoRefresh || props.refreshInterval <= 0) return;
+  
+  // 清除可能存在的旧定时器
+  stopAutoRefresh();
+  
+  // 创建新的定时器
+  refreshTimer.value = window.setInterval(() => {
+    if (props.deviceId) {
+      captureScreenshot();
+    }
+  }, props.refreshInterval);
+};
+
+// 停止自动刷新
+const stopAutoRefresh = () => {
+  if (refreshTimer.value !== null) {
+    window.clearInterval(refreshTimer.value);
+    refreshTimer.value = null;
+  }
+};
+
+// 处理图片点击
+const handleClick = () => {
+  emit('click');
+};
+
+// 处理图片加载错误
+const handleImageError = (event: Event) => {
+  console.error('图片加载失败:', event);
+  error.value = true;
+  errorMessage.value = '截图数据无效或已过期';
+  emit('screenshot-error', errorMessage.value);
+  // 清除无效图片数据
+  imageData.value = null;
+};
+
+// 处理图片加载完成
+const handleImageLoaded = () => {
+  // 图片加载成功后可以执行的操作
+  error.value = false;
+};
+
+// 监听设备ID变化，重新获取截图
+watch(() => props.deviceId, (newVal) => {
+  if (newVal && props.autoCapture) {
+    captureScreenshot();
+    
+    // 重新设置自动刷新
+    if (props.autoRefresh) {
+      startAutoRefresh();
+    }
+  } else {
+    stopAutoRefresh();
+  }
+});
+
+// 监听自动刷新设置变化
+watch(() => props.autoRefresh, (newVal) => {
+  if (newVal) {
+    startAutoRefresh();
+  } else {
+    stopAutoRefresh();
+  }
+});
+
+// 监听刷新间隔变化
+watch(() => props.refreshInterval, () => {
+  if (props.autoRefresh) {
+    startAutoRefresh(); // 重新设置定时器
+  }
+});
+
+// 组件挂载时，自动获取截图
+onMounted(() => {
+  if (props.autoCapture && props.deviceId) {
+    captureScreenshot();
+    
+    // 如果启用了自动刷新，开始定时刷新
+    if (props.autoRefresh) {
+      startAutoRefresh();
+    }
+  }
+});
+
+// 组件卸载前，清理定时器
+onBeforeUnmount(() => {
+  stopAutoRefresh();
+});
+
+// 暴露方法给父组件
+defineExpose({
+  captureScreenshot,
+  startAutoRefresh,
+  stopAutoRefresh
+});
 </script>
 
 <style scoped>
-.device-screenshot {
-  padding: 20px;
-}
-
-.screenshot-card {
-  width: 100%;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.quality-slider {
-  width: 200px;
-}
-
-.preview-container {
+.device-screenshot-container {
   position: relative;
   width: 100%;
-  height: 150px;
+  height: 100%;
+  overflow: hidden;
+  background-color: #f5f7fa;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #f5f7fa;
   border-radius: 4px;
 }
 
-.preview-image {
-  max-height: 150px;
-  object-fit: contain;
-}
-
-.no-image,
-.image-error {
+.screenshot-loading,
+.screenshot-error,
+.screenshot-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
-  color: #909399;
-  font-size: 14px;
+  z-index: 2;
 }
 
-.no-image .el-icon,
-.image-error .el-icon {
+.screenshot-loading {
+  background-color: rgba(0, 0, 0, 0.5);
+  color: #fff;
+}
+
+.screenshot-error {
+  background-color: rgba(245, 108, 108, 0.1);
+  color: #f56c6c;
+}
+
+.screenshot-placeholder {
+  background-color: #f5f7fa;
+  color: #909399;
+}
+
+.loading-icon,
+.error-icon {
   font-size: 24px;
   margin-bottom: 8px;
 }
 
-.error-tag {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
+.loading-icon {
+  animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.screenshot-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s;
+}
+
+.screenshot-image:hover {
+  transform: scale(1.05);
+  cursor: pointer;
+}
+
+.retry-button {
+  margin-top: 10px;
 }
 </style> 

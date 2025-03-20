@@ -15,6 +15,8 @@ import {
 } from "@/api/device";
 import GroupBadge from "./components/GroupBadge.vue";
 import DeviceStream from "./components/DeviceStream.vue";
+import DeviceScreenshot from "./components/DeviceScreenshot.vue";
+import StreamDialog from "./components/StreamDialog.vue";
 import {
   Plus,
   Refresh,
@@ -96,6 +98,40 @@ const searchInput = ref("");
 // 云手机设备列表
 const loading = ref(false);
 const devices = ref<Device[]>([]);
+
+// 流对话框控制
+const streamDialogVisible = ref(false);
+const selectedDevice = ref<Device | null>(null);
+
+// 截图刷新设置
+const autoRefresh = ref(true);
+const refreshInterval = ref(15000); // 15秒刷新一次
+
+// 截图状态跟踪
+const screenshotStatus = ref<Record<string, { success: boolean; error?: string }>>({});
+
+// 截图事件处理
+const handleScreenshotReady = (deviceId: string, imageData: string) => {
+  console.log(`设备 ${deviceId} 截图加载成功`);
+  // 更新截图状态
+  screenshotStatus.value[deviceId] = { success: true };
+};
+
+const handleScreenshotError = (deviceId: string, error: string) => {
+  console.error(`设备 ${deviceId} 截图加载失败:`, error);
+  // 更新截图状态
+  screenshotStatus.value[deviceId] = { success: false, error };
+};
+
+// 手动刷新指定设备的截图
+const refreshDeviceScreenshot = (deviceId: string) => {
+  const screenshotComponent = document.querySelector(`[data-device-id="${deviceId}"]`);
+  if (screenshotComponent && 'captureScreenshot' in screenshotComponent) {
+    // @ts-ignore - 动态调用组件方法
+    screenshotComponent.captureScreenshot();
+    ElMessage.info(`正在刷新设备 ${deviceId} 的截图`);
+  }
+};
 
 // 获取分组列表
 const getGroups = async () => {
@@ -187,24 +223,16 @@ const connectToPhone = (device: Device) => {
     return;
   }
   
-  // 方式1: 导航到详情页
-  router.push({
-    path: `/device/detail/${device.deviceId}`,
-    query: {
-      name: device.name,
-      status: device.status
-    }
-  });
+  // 设置选中的设备并打开对话框
+  selectedDevice.value = device;
+  streamDialogVisible.value = true;
   
-  // 方式2: 在新标签页打开wscrcpy（已注释）
-  /*
-  const encodedDeviceId = encodeURIComponent(device.deviceId);
-  const wsUrl = encodeURIComponent(`ws://localhost:8000/?action=proxy-adb&remote=tcp:8886&udid=${device.deviceId}`);
-  const streamUrl = `http://localhost:8000/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
-  window.open(streamUrl, '_blank');
-  */
-  
-  ElMessage.success(`已打开云手机: ${device.deviceId} 控制页面`);
+  ElMessage.success(`正在连接云手机: ${device.deviceId}`);
+};
+
+// 点击截图时打开流对话框
+const handleScreenshotClick = (device: Device) => {
+  connectToPhone(device);
 };
 
 // 重启云手机
@@ -320,6 +348,18 @@ const handleEditDialogClose = () => {
   };
 };
 
+// 切换自动刷新
+const toggleAutoRefresh = () => {
+  autoRefresh.value = !autoRefresh.value;
+  ElMessage.info(`${autoRefresh.value ? '开启' : '关闭'}自动刷新截图`);
+};
+
+// 改变刷新间隔
+const changeRefreshInterval = (interval: number) => {
+  refreshInterval.value = interval;
+  ElMessage.info(`截图刷新间隔已设置为 ${interval / 1000} 秒`);
+};
+
 onMounted(() => {
   getGroups();
   getDevices();
@@ -420,6 +460,31 @@ onMounted(() => {
       <div class="top-toolbar">
         <el-button type="primary" size="small">批量上线</el-button>
         <el-button type="danger" size="small">批量下线</el-button>
+
+        <div class="screenshot-controls">
+          <el-switch
+            v-model="autoRefresh"
+            class="refresh-switch"
+            active-text="自动刷新"
+            inactive-text="手动刷新"
+            @change="toggleAutoRefresh"
+          />
+          <el-dropdown v-if="autoRefresh" @command="changeRefreshInterval">
+            <el-button type="default" size="small">
+              {{ refreshInterval / 1000 }}秒 <el-icon><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item :command="5000">5秒</el-dropdown-item>
+                <el-dropdown-item :command="10000">10秒</el-dropdown-item>
+                <el-dropdown-item :command="15000">15秒</el-dropdown-item>
+                <el-dropdown-item :command="30000">30秒</el-dropdown-item>
+                <el-dropdown-item :command="60000">60秒</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+        
         <el-input
           v-model="searchInput"
           placeholder="搜索云手机"
@@ -458,13 +523,38 @@ onMounted(() => {
               :class="{ online: device.status === 'online' }"
             />
           </div>
-          <div class="phone-preview" @click="connectToPhone(device)">
-            <DeviceStream 
+          <div class="phone-preview">
+            <device-screenshot
               v-if="device.status === 'online'"
-              :device-id="device.deviceId" 
-              @stream-ready="() => {}"
+              :device-id="device.deviceId"
+              :auto-capture="true"
+              :quality="80"
+              :auto-refresh="autoRefresh"
+              :refresh-interval="refreshInterval"
+              @click="handleScreenshotClick(device)"
+              @screenshot-ready="(imageData) => handleScreenshotReady(device.deviceId, imageData)"
+              @screenshot-error="(err) => handleScreenshotError(device.deviceId, err)"
+              :data-device-id="device.deviceId"
+              ref="screenshotRef"
             />
-            <img v-else src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
+            <div v-else class="offline-placeholder">
+              <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
+              <div class="offline-text">设备离线</div>
+            </div>
+            <!-- 设备刷新图标 -->
+            <div class="device-refresh-action" v-if="device.status === 'online'">
+              <el-tooltip content="刷新截图" placement="top">
+                <el-button 
+                  size="small" 
+                  circle 
+                  type="info" 
+                  @click.stop="refreshDeviceScreenshot(device.deviceId)"
+                  :disabled="loading"
+                >
+                  <el-icon><Refresh /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
           </div>
           <div class="phone-actions">
             <el-button type="primary" size="small" class="action-button" @click="connectToPhone(device)">
@@ -542,6 +632,14 @@ onMounted(() => {
         </span>
       </template>
     </el-dialog>
+
+    <!-- 云手机流对话框 -->
+    <stream-dialog
+      v-model="streamDialogVisible"
+      :device-id="selectedDevice?.deviceId || ''"
+      :device-name="selectedDevice?.name || ''"
+      @closed="selectedDevice = null"
+    />
   </div>
 </template>
 
@@ -682,6 +780,17 @@ onMounted(() => {
   align-items: center;
 }
 
+.screenshot-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 20px;
+}
+
+.refresh-switch {
+  margin-right: 5px;
+}
+
 .search-input {
   width: 200px;
   margin-left: auto;
@@ -773,7 +882,7 @@ onMounted(() => {
   position: relative;
   width: 100%;
   padding-top: 177.78%; /* 保持 360:640 的宽高比 */
-  background-color: #fff; /* 改为白色背景 */
+  background-color: #f5f7fa; /* 改为浅灰色背景 */
   overflow: hidden;
   flex-grow: 1;
 }
@@ -787,22 +896,41 @@ onMounted(() => {
   object-fit: contain;
 }
 
-/* DeviceStream组件样式覆盖 */
-.phone-preview :deep(.device-stream-container) {
+/* 离线设备的样式 */
+.offline-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.offline-text {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  color: #909399;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  font-size: 12px;
+  color: #fff;
+}
+
+/* DeviceScreenshot组件样式覆盖 */
+.phone-preview :deep(.device-screenshot-container) {
   position: absolute !important;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   background-color: transparent;
-}
-
-.phone-preview :deep(.device-stream-frame) {
-  width: 100% !important;
-  height: 100% !important;
-  border: none;
-  background-color: transparent;
-  object-fit: cover;
 }
 
 .phone-actions {
@@ -825,5 +953,18 @@ onMounted(() => {
   text-align: center;
   padding: 30px;
   color: #909399;
+}
+
+.device-refresh-action {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+
+.device-refresh-action:hover {
+  opacity: 1;
 }
 </style>
