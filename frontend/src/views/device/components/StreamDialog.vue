@@ -24,6 +24,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import DeviceStream from './DeviceStream.vue';
 import { Close } from '@element-plus/icons-vue';
+import { STREAM_WINDOW_CONFIG } from './config';
 
 const props = defineProps({
   modelValue: {
@@ -151,8 +152,20 @@ const handleResize = (e: MouseEvent) => {
   const deltaX = e.clientX - initialPosition.value.x;
   const deltaY = e.clientY - initialPosition.value.y;
   
-  const newWidth = Math.max(400, initialSize.value.width + deltaX);
-  const newHeight = Math.max(600, initialSize.value.height + deltaY);
+  const newWidth = Math.max(
+    STREAM_WINDOW_CONFIG.MIN_WIDTH,
+    Math.min(
+      STREAM_WINDOW_CONFIG.MAX_WIDTH,
+      initialSize.value.width + deltaX
+    )
+  );
+  const newHeight = Math.max(
+    STREAM_WINDOW_CONFIG.MIN_HEIGHT,
+    Math.min(
+      STREAM_WINDOW_CONFIG.MAX_HEIGHT,
+      initialSize.value.height + deltaY
+    )
+  );
   
   dialogRef.value.style.width = `${newWidth}px`;
   dialogRef.value.style.height = `${newHeight}px`;
@@ -181,8 +194,8 @@ onBeforeUnmount(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 400px;
-  height: 800px;
+  width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
+  height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
   background-color: #000;
   border-radius: 20px;
   overflow: hidden;
@@ -191,9 +204,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   z-index: 2000;
   user-select: none;
-  /* 移除这些属性，让初始状态保持居中 */
-  /* transform: none;
-  transition: none; */
 }
 
 .stream-header {

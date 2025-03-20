@@ -6,10 +6,10 @@
       </div>
       
       <iframe 
-        v-show="!loading" 
         ref="streamFrame"
-        :src="streamUrl"
+        :src="iframeSrc"
         class="device-stream-frame"
+        :style="{ visibility: loading ? 'hidden' : 'visible' }"
         @load="onIframeLoaded"
         scrolling="no"
         sandbox="allow-scripts allow-same-origin allow-forms"
@@ -18,8 +18,9 @@
   </template>
   
   <script setup>
-  import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+  import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
   import { Loading } from '@element-plus/icons-vue';
+  import { STREAM_WINDOW_CONFIG } from './config';
   
   const props = defineProps({
     deviceId: {
@@ -37,6 +38,7 @@
   const loading = ref(true);
   const streamFrame = ref(null);
   const wscrcpyBaseUrl = 'http://localhost:8000';
+  const iframeSrc = ref('about:blank');
   
   // 构建完整的串流URL
   const streamUrl = computed(() => {
@@ -47,20 +49,63 @@
     return `${wscrcpyBaseUrl}/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
   });
   
-  // iframe加载完成
-  const onIframeLoaded = () => {
-    setTimeout(() => {
-      loading.value = false;
-      emit('stream-ready');
-    }, 500);
-  };
-  
   // 组件挂载时，自动连接
   onMounted(() => {
     if (props.autoConnect && props.deviceId) {
       loading.value = true;
+      
+      // 使用nextTick确保DOM已渲染
+      nextTick(() => {
+        console.log('组件挂载时iframe尺寸:', {
+          iframe: streamFrame.value,
+          parent: streamFrame.value?.parentElement
+        });
+        
+        // 先手动强制设置iframe容器尺寸
+        if (streamFrame.value && streamFrame.value.parentElement) {
+          const container = streamFrame.value.parentElement;
+          container.style.width = `${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px`;
+          container.style.height = `${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px`;
+          container.style.minHeight = `${STREAM_WINDOW_CONFIG.MIN_HEIGHT}px`;
+          
+          // 直接设置iframe的style属性
+          streamFrame.value.style.cssText = `
+            width: ${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px !important;
+            height: ${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px !important;
+            min-height: ${STREAM_WINDOW_CONFIG.MIN_HEIGHT}px !important;
+            visibility: visible !important;
+            display: block !important;
+          `;
+          
+          // 打印设置后的尺寸
+          console.log('设置尺寸后:', {
+            width: streamFrame.value.offsetWidth,
+            height: streamFrame.value.offsetHeight,
+            style: streamFrame.value.style.cssText,
+            parentWidth: container.offsetWidth,
+            parentHeight: container.offsetHeight
+          });
+          
+          // 既然已经有尺寸了，直接加载实际URL
+          console.log('直接加载实际URL:', streamUrl.value);
+          iframeSrc.value = streamUrl.value;
+        }
+      });
     }
   });
+  
+  // iframe加载完成
+  const onIframeLoaded = () => {
+    console.log('iframe loaded:', iframeSrc.value);
+    
+    if (iframeSrc.value === streamUrl.value) {
+      // 加载实际URL完成
+      setTimeout(() => {
+        loading.value = false;
+        emit('stream-ready');
+      }, 500);
+    }
+  };
   
   // 组件卸载前，清理资源
   onBeforeUnmount(() => {
@@ -73,11 +118,12 @@
   <style scoped>
   .device-stream-container {
     position: relative;
-    width: 100%;
-    height: 100%;
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
     display: flex;
     flex-direction: column;
     background: #000;
+    min-height: v-bind('STREAM_WINDOW_CONFIG.MIN_HEIGHT + "px"');
   }
   
   .device-stream-loading {
@@ -110,9 +156,9 @@
   
   .device-stream-frame {
     flex: 1;
-    width: 100%;
-    height: 0;
-    min-height: 0;
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
+    min-height: v-bind('STREAM_WINDOW_CONFIG.MIN_HEIGHT + "px"');
     border: none;
     background: transparent;
     display: block;
