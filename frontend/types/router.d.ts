@@ -22,6 +22,8 @@ declare global {
     showLink?: boolean;
     /** 是否显示父级菜单 `可选` */
     showParent?: boolean;
+    /** 即使只有一个子路由，也始终显示父级菜单 `可选` */
+    alwaysShow?: boolean;
     /** 页面级别权限设置 `可选` */
     roles?: Array<string>;
     /** 按钮级别权限设置 `可选` */
@@ -96,6 +98,8 @@ declare global {
       showLink?: boolean;
       /** 菜单升序排序，值越高排的越后（只针对顶级路由）`可选` */
       rank?: number;
+      /** 即使只有一个子路由，也始终显示父级菜单 `可选` */
+      alwaysShow?: boolean;
     };
     /** 子路由配置项 */
     children?: Array<RouteChildrenConfigsTable>;

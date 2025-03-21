@@ -1,11 +1,14 @@
+const Layout = () => import("@/layout/index.vue");
+
 export default {
   path: "/device",
-  redirect: "/device/cloudphone",
+  name: "Device",
+  component: Layout,
   meta: {
     icon: "ri:smartphone-line",
-    title: "云手机管理",
-    rank: 9
-    // showLink: false
+    title: "手机控制台",
+    rank: 9,
+    alwaysShow: true
   },
   children: [
     {
@@ -13,18 +16,18 @@ export default {
       name: "CloudPhone",
       component: () => import("@/views/device/cloudphone.vue"),
       meta: {
-        title: "云手机管理",
-        icon: "ri:smartphone-line"
+        title: "分组手机",
+        icon: "ri:smartphone-line",
+        showParent: true
       }
     },
     {
-      path: "/device/detail/:id",
-      name: "DeviceDetail",
-      component: () => import("@/views/device/detail.vue"),
+      path: "/device/empty",
+      name: "DeviceEmpty",
+      component: () => import("@/views/device/cloudphone.vue"),
       meta: {
-        title: "设备控制",
-        showLink: false,
-        hiddenTag: true
+        title: "空路由",
+        showLink: false
       }
     }
   ]
