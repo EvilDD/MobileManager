@@ -142,15 +142,13 @@ const fetchData = async () => {
     console.log('正在获取设备列表，参数:', {
       page: currentPage.value,
       pageSize: pageSize.value,
-      keyword: searchKeyword.value,
-      groupId: undefined
+      keyword: searchKeyword.value
     })
     
     const res = await getDeviceList({
       page: currentPage.value,
       pageSize: pageSize.value,
-      keyword: searchKeyword.value,
-      groupId: undefined
+      keyword: searchKeyword.value
     })
     
     console.log('获取设备列表结果:', res)

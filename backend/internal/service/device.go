@@ -24,9 +24,12 @@ func (s *deviceService) List(ctx context.Context, req *v1.ListReq) (res *v1.List
 	}
 
 	m := dao.Device.Ctx(ctx)
-	if req.GroupId >= 0 {
+
+	// 检查请求中是否明确指定了GroupId参数
+	if g.RequestFromCtx(ctx).GetQuery("groupId").String() != "" {
 		m = m.Where("group_id", req.GroupId)
 	}
+
 	if req.Keyword != "" {
 		m = m.WhereLike("name", "%"+req.Keyword+"%")
 	}
