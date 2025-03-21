@@ -99,13 +99,34 @@ const searchInput = ref("");
 const loading = ref(false);
 const devices = ref<Device[]>([]);
 
+// 状态筛选选项
+const statusFilter = ref("all");
+
+// 筛选后的设备列表
+const filteredDevices = computed(() => {
+  if (!devices.value) return [];
+  
+  return devices.value.filter(device => {
+    // 先按搜索关键词筛选
+    const matchesSearch = !searchInput.value || 
+      device.deviceId.toLowerCase().includes(searchInput.value.toLowerCase());
+    
+    // 再按状态筛选
+    const matchesStatus = statusFilter.value === "all" || 
+      (statusFilter.value === "online" && device.status === "online") ||
+      (statusFilter.value === "offline" && device.status !== "online");
+    
+    return matchesSearch && matchesStatus;
+  });
+});
+
 // 流对话框控制
 const streamDialogVisible = ref(false);
 const selectedDevice = ref<Device | null>(null);
 
 // 截图刷新设置
 const autoRefresh = ref(true);
-const refreshInterval = ref(15000); // 15秒刷新一次
+const refreshInterval = ref(5000); // 默认5秒刷新一次
 
 // 截图状态跟踪
 const screenshotStatus = ref<Record<string, { success: boolean; error?: string }>>({});
@@ -123,14 +144,32 @@ const handleScreenshotError = (deviceId: string, error: string) => {
   screenshotStatus.value[deviceId] = { success: false, error };
 };
 
-// 手动刷新指定设备的截图
-const refreshDeviceScreenshot = (deviceId: string) => {
-  const screenshotComponent = document.querySelector(`[data-device-id="${deviceId}"]`);
-  if (screenshotComponent && 'captureScreenshot' in screenshotComponent) {
-    // @ts-ignore - 动态调用组件方法
-    screenshotComponent.captureScreenshot();
-    ElMessage.info(`正在刷新设备 ${deviceId} 的截图`);
+// 切换自动刷新状态
+const toggleAutoRefresh = (enable: boolean) => {
+  autoRefresh.value = enable;
+  if (!enable) {
+    ElMessage.info('已关闭自动刷新');
+  } else {
+    ElMessage.info(`已开启自动刷新，间隔 ${refreshInterval.value / 1000} 秒`);
   }
+};
+
+// 改变刷新间隔
+const changeRefreshInterval = (interval: number) => {
+  if (interval === 0) {
+    // 永不刷新
+    autoRefresh.value = false;
+    ElMessage.info('已设置为永不刷新');
+  } else {
+    refreshInterval.value = interval;
+    autoRefresh.value = true;
+    ElMessage.info(`截图刷新间隔已设置为 ${interval / 1000} 秒`);
+  }
+};
+
+// 改变状态筛选
+const changeStatusFilter = (status: string) => {
+  statusFilter.value = status;
 };
 
 // 获取分组列表
@@ -164,7 +203,7 @@ const getDevices = async () => {
       page: pagination.value.page,
       pageSize: pagination.value.pageSize,
       groupId: activeGroup.value,
-      keyword: searchInput.value
+      keyword: ""  // 不再传递搜索关键词到后端
     });
     if (res.code === 0) {
       devices.value = res.data.list;
@@ -348,18 +387,6 @@ const handleEditDialogClose = () => {
   };
 };
 
-// 切换自动刷新
-const toggleAutoRefresh = () => {
-  autoRefresh.value = !autoRefresh.value;
-  ElMessage.info(`${autoRefresh.value ? '开启' : '关闭'}自动刷新截图`);
-};
-
-// 改变刷新间隔
-const changeRefreshInterval = (interval: number) => {
-  refreshInterval.value = interval;
-  ElMessage.info(`截图刷新间隔已设置为 ${interval / 1000} 秒`);
-};
-
 onMounted(() => {
   getGroups();
   getDevices();
@@ -458,28 +485,18 @@ onMounted(() => {
     <div class="content-area">
       <!-- 顶部操作栏 -->
       <div class="top-toolbar">
-        <el-button type="primary" size="small">批量上线</el-button>
-        <el-button type="danger" size="small">批量下线</el-button>
-
         <div class="screenshot-controls">
-          <el-switch
-            v-model="autoRefresh"
-            class="refresh-switch"
-            active-text="自动刷新"
-            inactive-text="手动刷新"
-            @change="toggleAutoRefresh"
-          />
-          <el-dropdown v-if="autoRefresh" @command="changeRefreshInterval" trigger="click">
+          <el-dropdown @command="changeRefreshInterval" trigger="click">
             <el-button type="default" size="small">
-              {{ refreshInterval / 1000 }}秒 <el-icon><ArrowDown /></el-icon>
+              {{ autoRefresh ? (refreshInterval / 1000 + '秒刷新') : '永不刷新' }} <el-icon><ArrowDown /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item :command="5000">5秒</el-dropdown-item>
-                <el-dropdown-item :command="10000">10秒</el-dropdown-item>
-                <el-dropdown-item :command="15000">15秒</el-dropdown-item>
-                <el-dropdown-item :command="30000">30秒</el-dropdown-item>
-                <el-dropdown-item :command="60000">60秒</el-dropdown-item>
+                <el-dropdown-item :command="1000">1秒刷新</el-dropdown-item>
+                <el-dropdown-item :command="3000">3秒刷新</el-dropdown-item>
+                <el-dropdown-item :command="5000">5秒刷新</el-dropdown-item>
+                <el-dropdown-item :command="15000">15秒刷新</el-dropdown-item>
+                <el-dropdown-item :command="0">永不刷新</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -495,15 +512,15 @@ onMounted(() => {
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-dropdown>
-          <el-button type="default" size="small" trigger="click">
-            全部 <el-icon><ArrowDown /></el-icon>
+        <el-dropdown @command="changeStatusFilter" trigger="click">
+          <el-button type="default" size="small">
+            {{ statusFilter === 'all' ? '全部' : statusFilter === 'online' ? '在线' : '离线' }} <el-icon><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item>全部</el-dropdown-item>
-              <el-dropdown-item>在线</el-dropdown-item>
-              <el-dropdown-item>离线</el-dropdown-item>
+              <el-dropdown-item command="all">全部</el-dropdown-item>
+              <el-dropdown-item command="online">在线</el-dropdown-item>
+              <el-dropdown-item command="offline">离线</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -512,7 +529,7 @@ onMounted(() => {
       <!-- 云手机列表 -->
       <div v-loading="loading" class="phone-grid">
         <div
-          v-for="device in devices"
+          v-for="device in filteredDevices"
           :key="device.id"
           class="phone-card"
         >
@@ -540,20 +557,6 @@ onMounted(() => {
             <div v-else class="offline-placeholder">
               <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
               <div class="offline-text">设备离线</div>
-            </div>
-            <!-- 设备刷新图标 -->
-            <div class="device-refresh-action" v-if="device.status === 'online'">
-              <el-tooltip content="刷新截图" placement="top">
-                <el-button 
-                  size="small" 
-                  circle 
-                  type="info" 
-                  @click.stop="refreshDeviceScreenshot(device.deviceId)"
-                  :disabled="loading"
-                >
-                  <el-icon><Refresh /></el-icon>
-                </el-button>
-              </el-tooltip>
             </div>
           </div>
           <div class="phone-actions">
@@ -766,43 +769,46 @@ onMounted(() => {
 /* 右侧内容区样式 */
 .content-area {
   flex: 1;
-  padding: 16px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  margin-left: 10px;
+  margin-right: 30px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
 }
 
 .top-toolbar {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .screenshot-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-left: 20px;
-}
-
-.refresh-switch {
-  margin-right: 5px;
+  gap: 12px;
 }
 
 .search-input {
-  width: 200px;
+  width: 220px;
   margin-left: auto;
+  margin-right: 12px;
 }
 
 /* 云手机卡片网格 */
 .phone-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 20px;
+  gap: 24px;
   overflow-y: auto;
-  padding-bottom: 20px;
-  padding-top: 10px;
+  padding-bottom: 24px;
+  padding-top: 12px;
 }
 
 @media screen and (max-width: 1600px) {
@@ -964,18 +970,5 @@ onMounted(() => {
   text-align: center;
   padding: 30px;
   color: #909399;
-}
-
-.device-refresh-action {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10;
-  opacity: 0.7;
-  transition: opacity 0.3s;
-}
-
-.device-refresh-action:hover {
-  opacity: 1;
 }
 </style>
