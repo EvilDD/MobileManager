@@ -29,9 +29,15 @@ export interface Device {
   name: string;
   deviceId: string;
   groupId: number;
+  groupName: string;
   status: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GroupOption {
+  id: number;
+  name: string;
 }
 
 export interface DeviceListResult {
@@ -42,6 +48,7 @@ export interface DeviceListResult {
     page: number;
     pageSize: number;
     total: number;
+    groupOptions: GroupOption[];
   };
 }
 

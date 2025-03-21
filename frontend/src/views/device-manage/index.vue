@@ -16,7 +16,23 @@
                 </template>
               </el-input>
             </el-col>
-            <el-col :span="18" class="text-right">
+            <el-col :span="6">
+              <el-select
+                v-model="selectedGroupId"
+                placeholder="选择分组"
+                clearable
+                style="width: 100%"
+                @change="handleSearch"
+              >
+                <el-option
+                  v-for="item in groupOptions"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-col>
+            <el-col :span="12" class="text-right">
               <el-button type="primary" @click="handleAdd">
                 <el-icon><Plus /></el-icon>新增设备
               </el-button>
@@ -29,6 +45,7 @@
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="设备名称" />
         <el-table-column prop="deviceId" label="设备ID" />
+        <el-table-column prop="groupName" label="所属分组" />
         <el-table-column prop="status" label="状态">
           <template #default="{ row }">
             <el-tag :type="row.status === 'online' ? 'success' : 'danger'">
@@ -84,6 +101,16 @@
         <el-form-item label="设备ID" prop="deviceId">
           <el-input v-model="formData.deviceId" />
         </el-form-item>
+        <el-form-item label="所属分组" prop="groupId">
+          <el-select v-model="formData.groupId" placeholder="请选择分组" style="width: 100%">
+            <el-option
+              v-for="item in groupOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="formData.status" style="width: 100%">
             <el-option label="在线" value="online" />
@@ -117,6 +144,8 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const tableData = ref<Device[]>([])
+const selectedGroupId = ref<number | undefined>(undefined)
+const groupOptions = ref<{ id: number, name: string }[]>([])
 
 // 表单相关
 const dialogVisible = ref(false)
@@ -126,6 +155,7 @@ const formData = ref({
   id: undefined as number | undefined,
   name: '',
   deviceId: '',
+  groupId: 0 as number,
   status: 'offline'
 })
 
@@ -142,20 +172,33 @@ const fetchData = async () => {
     console.log('正在获取设备列表，参数:', {
       page: currentPage.value,
       pageSize: pageSize.value,
-      keyword: searchKeyword.value
+      keyword: searchKeyword.value,
+      groupId: selectedGroupId.value
     })
     
-    const res = await getDeviceList({
+    const params: any = {
       page: currentPage.value,
       pageSize: pageSize.value,
       keyword: searchKeyword.value
-    })
+    }
+    
+    // 只有在选择了分组时才传递 groupId 参数
+    if (selectedGroupId.value !== undefined) {
+      params.groupId = selectedGroupId.value
+    }
+    
+    const res = await getDeviceList(params)
     
     console.log('获取设备列表结果:', res)
     
     if (res.code === 0) {
       tableData.value = res.data.list
       total.value = res.data.total
+      
+      // 保存分组选项供下拉选择使用
+      if (res.data.groupOptions) {
+        groupOptions.value = res.data.groupOptions
+      }
     } else {
       ElMessage.error(res.message || '获取设备列表失败')
     }
@@ -191,6 +234,7 @@ const handleAdd = () => {
     id: undefined,
     name: '',
     deviceId: '',
+    groupId: 0,
     status: 'offline'
   }
   dialogVisible.value = true
@@ -232,20 +276,21 @@ const handleSubmit = async () => {
         let res;
         
         if (formData.value.id) {
-          // 更新设备：只发送必要的字段，不包含 groupId
+          // 更新设备：包含指定的分组ID
           res = await updateDevice({
             id: formData.value.id,
             name: formData.value.name,
             deviceId: formData.value.deviceId,
-            status: formData.value.status
-            // 不发送 groupId，除非用户明确修改了分组
+            status: formData.value.status,
+            groupId: formData.value.groupId  // 添加分组ID
           });
         } else {
-          // 创建设备：仍然使用所有必要字段
+          // 创建设备：包含分组ID
           res = await saveDevice({
             name: formData.value.name,
             deviceId: formData.value.deviceId,
-            status: formData.value.status
+            status: formData.value.status,
+            groupId: formData.value.groupId  // 添加分组ID
           });
         }
         

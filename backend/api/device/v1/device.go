@@ -10,6 +10,12 @@ const (
 	DeviceStatusOffline = "offline"
 )
 
+// 分组选项，用于前端下拉选择
+type GroupOption struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 type ListReq struct {
 	g.Meta   `path:"/devices/list" tags:"设备管理" method:"get" summary:"获取设备列表"`
 	Page     int    `json:"page" v:"required#请输入页码" dc:"页码"`
@@ -19,10 +25,11 @@ type ListReq struct {
 }
 
 type ListRes struct {
-	List     []Device `json:"list" dc:"设备列表"`
-	Page     int      `json:"page" dc:"页码"`
-	PageSize int      `json:"pageSize" dc:"每页数量"`
-	Total    int      `json:"total" dc:"总数"`
+	List         []Device      `json:"list" dc:"设备列表"`
+	Page         int           `json:"page" dc:"页码"`
+	PageSize     int           `json:"pageSize" dc:"每页数量"`
+	Total        int           `json:"total" dc:"总数"`
+	GroupOptions []GroupOption `json:"groupOptions" dc:"分组选项列表"`
 }
 
 type CreateReq struct {
@@ -58,6 +65,7 @@ type Device struct {
 	Name      string `json:"name"`
 	DeviceId  string `json:"deviceId"`
 	GroupId   int64  `json:"groupId"`
+	GroupName string `json:"groupName"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`

@@ -45,17 +45,55 @@ func (s *deviceService) List(ctx context.Context, req *v1.ListReq) (res *v1.List
 		return nil, err
 	}
 
+	// 获取所有分组信息，用于后面关联
+	var groups []*model.Group
+	err = dao.Group.Ctx(ctx).Scan(&groups)
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建分组ID到分组信息的映射
+	groupMap := make(map[int64]model.Group)
+	for _, group := range groups {
+		groupMap[group.Id] = *group
+	}
+
+	// 添加默认的"未分组"选项
+	groupMap[0] = model.Group{
+		Id:          0,
+		Name:        "未分组",
+		Description: "未分配分组的设备",
+	}
+
 	for _, device := range devices {
+		// 查找设备所属分组
+		group, exists := groupMap[device.GroupId]
+		groupName := "未分组"
+		if exists {
+			groupName = group.Name
+		}
+
 		res.List = append(res.List, v1.Device{
 			Id:        device.Id,
 			Name:      device.Name,
 			DeviceId:  device.DeviceId,
 			GroupId:   device.GroupId,
+			GroupName: groupName,
 			Status:    device.Status,
 			CreatedAt: device.CreatedAt.String(),
 			UpdatedAt: device.UpdatedAt.String(),
 		})
 	}
+
+	// 获取所有分组供前端选择使用
+	var groupOptions []v1.GroupOption
+	for _, group := range groupMap {
+		groupOptions = append(groupOptions, v1.GroupOption{
+			Id:   group.Id,
+			Name: group.Name,
+		})
+	}
+	res.GroupOptions = groupOptions
 
 	return
 }
