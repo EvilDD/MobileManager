@@ -131,4 +131,28 @@ export function captureDeviceScreenshot(data: {
     // 返回原始响应
     return response as unknown as ScreenshotResponse;
   });
+}
+
+/** 更新设备 */
+export function updateDevice(data: { 
+  id: number;
+  name?: string;
+  deviceId?: string;
+  groupId?: number;
+  status?: string;
+}) {
+  return http.request<{ code: number; message: string; data: Record<string, unknown> }>(
+    "put",
+    "/api/devices/update",
+    { data }
+  );
+}
+
+/** 删除设备 */
+export function deleteDevice(id: number) {
+  return http.request<{ code: number; message: string; data: Record<string, unknown> }>(
+    "delete",
+    "/api/devices/delete",
+    { data: { id } }
+  );
 } 
