@@ -99,15 +99,31 @@ func (s *deviceService) Create(ctx context.Context, req *v1.CreateReq) error {
 
 // Update 更新设备
 func (s *deviceService) Update(ctx context.Context, req *v1.UpdateReq) error {
-	// 如果指定了分组ID，则检查分组是否存在
-	if req.GroupId > 0 {
-		count, err := dao.Group.Ctx(ctx).Where("id", req.GroupId).Count()
-		if err != nil {
-			return err
+	// 准备更新数据
+	updateData := g.Map{
+		"name":      req.Name,
+		"device_id": req.DeviceId,
+		"status":    req.Status,
+	}
+
+	// 检查请求中是否明确提供了 groupId 参数
+	requestBody := g.RequestFromCtx(ctx).GetBody()
+	bodyJson := g.NewVar(requestBody).Map()
+	_, hasGroupId := bodyJson["groupId"]
+
+	if hasGroupId {
+		// 如果指定了分组ID，则检查分组是否存在
+		if req.GroupId > 0 {
+			count, err := dao.Group.Ctx(ctx).Where("id", req.GroupId).Count()
+			if err != nil {
+				return err
+			}
+			if count == 0 {
+				return gerror.New("分组不存在")
+			}
 		}
-		if count == 0 {
-			return gerror.New("分组不存在")
-		}
+		// 将 group_id 添加到更新数据中
+		updateData["group_id"] = req.GroupId
 	}
 
 	// 检查设备ID是否与其他设备重复
@@ -129,17 +145,11 @@ func (s *deviceService) Update(ctx context.Context, req *v1.UpdateReq) error {
 	}
 
 	// 如果未指定状态，则默认为离线状态
-	status := req.Status
-	if status == "" {
-		status = v1.DeviceStatusOffline
+	if req.Status == "" {
+		updateData["status"] = v1.DeviceStatusOffline
 	}
 
-	_, err = dao.Device.Ctx(ctx).Where("id", req.Id).Data(g.Map{
-		"name":      req.Name,
-		"device_id": req.DeviceId,
-		"group_id":  req.GroupId,
-		"status":    status,
-	}).Update()
+	_, err = dao.Device.Ctx(ctx).Where("id", req.Id).Data(updateData).Update()
 	return err
 }
 

@@ -229,17 +229,19 @@ const handleSubmit = async () => {
   await formRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        const submitData = { ...formData.value }
         let res;
         
         if (formData.value.id) {
+          // 更新设备：只发送必要的字段，不包含 groupId
           res = await updateDevice({
             id: formData.value.id,
             name: formData.value.name,
             deviceId: formData.value.deviceId,
             status: formData.value.status
+            // 不发送 groupId，除非用户明确修改了分组
           });
         } else {
+          // 创建设备：仍然使用所有必要字段
           res = await saveDevice({
             name: formData.value.name,
             deviceId: formData.value.deviceId,
