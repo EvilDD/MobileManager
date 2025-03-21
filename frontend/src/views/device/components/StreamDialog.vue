@@ -10,18 +10,36 @@
       </div>
       
       <!-- 加载中状态 -->
-      <div v-if="!streamReady && isReady" class="stream-loading">
+      <div v-if="isLoading && !streamError" class="stream-loading">
         <el-icon class="loading-icon"><Loading /></el-icon>
-        <span>串流加载中...</span>
+        <span>正在连接中，请稍候...</span>
+      </div>
+      
+      <!-- 错误状态界面 -->
+      <div v-if="streamError" class="stream-error">
+        <el-icon class="error-icon"><CircleClose /></el-icon>
+        <span>{{ errorMessage }}</span>
+        <div class="error-buttons">
+          <el-button type="primary" size="small" @click="retryConnection" class="retry-button">
+            重试连接
+          </el-button>
+          <el-button type="danger" size="small" @click="closeDialog" class="close-error-button">
+            关闭窗口
+          </el-button>
+        </div>
       </div>
       
       <div class="phone-frame">
         <div class="phone-notch" />
         <device-stream 
           v-if="visible && deviceId && isReady" 
+          ref="streamRef"
           :device-id="deviceId" 
           :auto-connect="true"
-          @stream-ready="onStreamReady"
+          :server-url="serverUrl"
+          @success="onStreamReady"
+          @stream-error="onStreamError"
+          @loading-start="onLoadingStart"
         />
       </div>
       <div class="resize-handle" @mousedown="startResize" />
@@ -32,7 +50,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import DeviceStream from './DeviceStream.vue';
-import { Close, Loading } from '@element-plus/icons-vue';
+import { Close, Loading, CircleClose } from '@element-plus/icons-vue';
 import { STREAM_WINDOW_CONFIG } from './config';
 import { ElMessage } from 'element-plus';
 
@@ -44,6 +62,10 @@ const props = defineProps({
   deviceId: {
     type: String,
     default: ''
+  },
+  serverUrl: {
+    type: String,
+    default: 'http://localhost:8000'
   }
 });
 
@@ -55,13 +77,22 @@ const visible = ref(false);
 const isReady = ref(false);
 // 流是否准备好
 const streamReady = ref(false);
+// 流连接错误
+const streamError = ref(false);
+// 错误信息
+const errorMessage = ref('');
 const dialogRef = ref<HTMLElement | null>(null);
+const streamRef = ref(null);
 
-// 标题计算属性
+// 计算属性: 标题
 const title = computed(() => {
-  return streamReady.value 
-    ? `已连接到设备: ${props.deviceId}` 
-    : `连接到设备: ${props.deviceId}`;
+  if (streamError.value) {
+    return `连接设备 ${props.deviceId || ''} 失败`;
+  }
+  if (!streamReady.value) {
+    return `正在连接设备 ${props.deviceId || ''}...`;
+  }
+  return `连接设备 ${props.deviceId || ''} 成功`;
 });
 
 // 拖拽相关状态
@@ -73,11 +104,18 @@ const isResizing = ref(false);
 const initialSize = ref({ width: 0, height: 0 });
 const initialPosition = ref({ x: 0, y: 0 });
 
+// 加载中状态
+const isLoading = ref(false);
+
 // 监听显示状态
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     visible.value = true;
     streamReady.value = false;
+    streamError.value = false;
+    errorMessage.value = '';
+    isLoading.value = true; // 显示加载状态
+    
     // 添加一个小延迟，确保对话框完全打开后再加载iframe
     setTimeout(() => {
       isReady.value = true;
@@ -85,6 +123,8 @@ watch(() => props.modelValue, (newVal) => {
   } else {
     isReady.value = false;
     streamReady.value = false;
+    streamError.value = false;
+    isLoading.value = false;
     setTimeout(() => {
       visible.value = false;
       emit('closed');
@@ -92,15 +132,69 @@ watch(() => props.modelValue, (newVal) => {
   }
 });
 
+// 重试连接
+const retryConnection = () => {
+  if (streamRef.value && streamRef.value.retryConnect) {
+    // 显示加载状态
+    isLoading.value = true;
+    
+    // 短暂延迟后再清除错误状态，避免UI闪烁
+    setTimeout(() => {
+      streamError.value = false;
+      errorMessage.value = '';
+    }, 100);
+    
+    // 直接调用流组件的重试方法
+    streamRef.value.retryConnect();
+    
+    // 设置超时检查，确保错误状态能够同步
+    setTimeout(() => {
+      // 如果5秒后仍然没有成功或新的错误状态，恢复错误UI
+      if (!streamReady.value && !streamError.value) {
+        isLoading.value = false;
+        streamError.value = true;
+        errorMessage.value = '连接超时，请再次尝试';
+        ElMessage.error('连接超时，请再次尝试');
+      }
+    }, 5000);
+  }
+};
+
 // 流加载完成回调
-const onStreamReady = () => {
+const onStreamReady = (deviceId, data) => {
+  console.log('收到流加载完成事件:', deviceId, data);
   streamReady.value = true;
-  ElMessage.success(`连接设备 ${props.deviceId} 成功`);
+  streamError.value = false;
+  isLoading.value = false;
+  
+  // 只有首次连接成功才显示消息
+  if (data?.initialConnect) {
+    console.log('显示连接成功消息');
+    // 显示成功提示消息
+    ElMessage.success(`连接设备 ${props.deviceId} 成功`);
+  }
+};
+
+// 流加载错误回调
+const onStreamError = (errorData) => {
+  streamError.value = true;
+  isLoading.value = false;
+  errorMessage.value = errorData.error || '连接失败';
+  
+  // 显示错误消息
+  ElMessage.error(errorMessage.value);
 };
 
 // 关闭窗口
 const closeDialog = () => {
+  // 立即清除错误状态以便正确关闭
+  streamError.value = false;
+  errorMessage.value = '';
+  
+  // 更新父组件的v-model值
   emit('update:modelValue', false);
+  
+  // 短暂延迟后处理完全关闭
   setTimeout(() => {
     visible.value = false;
     emit('closed');
@@ -208,6 +302,18 @@ onBeforeUnmount(() => {
   document.removeEventListener('mouseup', stopResize);
 });
 
+// 暴露方法给父组件
+defineExpose({
+  retryConnection
+});
+
+// 加载开始回调
+const onLoadingStart = (deviceId) => {
+  console.log('设备开始加载:', deviceId);
+  isLoading.value = true;
+  streamReady.value = false;
+  streamError.value = false;
+};
 </script>
 
 <style scoped>
@@ -248,32 +354,6 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
-.stream-loading {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.7);
-  color: white;
-  z-index: 10;
-}
-
-.loading-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  animation: spin 1.5s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 .stream-header {
   display: flex;
   justify-content: space-between;
@@ -281,6 +361,8 @@ onBeforeUnmount(() => {
   padding: 12px 16px;
   background-color: #1a1a1a;
   cursor: move;
+  position: relative;
+  z-index: 20;
 }
 
 .stream-title {
@@ -302,6 +384,8 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   transition: all 0.3s ease;
   padding: 0;
+  position: relative;
+  z-index: 25;
 }
 
 .close-button:hover {
@@ -367,6 +451,82 @@ onBeforeUnmount(() => {
   height: 12px;
   border-right: 2px solid rgba(255, 255, 255, 0.5);
   border-bottom: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.retry-button {
+  margin: 0;
+}
+
+.error-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.stream-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #f56c6c;
+  z-index: 15; /* 确保在header下面，不遮挡关闭按钮 */
+  text-align: center;
+  padding: 20px;
+}
+
+.error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #f56c6c;
+}
+
+.close-error-button {
+  background-color: #f56c6c;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.close-error-button:hover {
+  background-color: #e65c5c;
+}
+
+.stream-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  z-index: 15;
+  text-align: center;
+  padding: 20px;
+}
+
+.loading-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #fff;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 @media (max-width: 768px) {
