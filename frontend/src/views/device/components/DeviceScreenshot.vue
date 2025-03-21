@@ -1,10 +1,5 @@
 <template>
-  <div class="device-screenshot-container" :class="{ 'loading': loading, 'error': error }">
-    <div v-if="loading" class="screenshot-loading">
-      <el-icon class="loading-icon"><Loading /></el-icon>
-      <span>获取截图中...</span>
-    </div>
-    
+  <div class="device-screenshot-container" :class="{ 'error': error }">
     <div v-if="error" class="screenshot-error">
       <el-icon class="error-icon"><CircleClose /></el-icon>
       <span>{{ errorMessage }}</span>
@@ -14,7 +9,7 @@
     </div>
     
     <img 
-      v-if="imageData && !loading" 
+      v-if="imageData" 
       :src="imageData" 
       class="screenshot-image" 
       alt="设备截图"

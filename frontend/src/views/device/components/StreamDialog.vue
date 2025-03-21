@@ -1,30 +1,40 @@
 <template>
-  <div v-if="modelValue" class="stream-window" ref="dialogRef">
-    <div class="stream-header" @mousedown="startDrag">
-      <span class="stream-title">周老师 (127.0.0.1:16480)</span>
-      <button class="close-button" @click="closeDialog">
-        <el-icon><Close /></el-icon>
-      </button>
+  <div v-if="modelValue" class="stream-dialog-container">
+    <div class="stream-backdrop" />
+    <div class="stream-window" ref="dialogRef">
+      <div class="stream-header" @mousedown="startDrag">
+        <span class="stream-title">{{ title }}</span>
+        <button class="close-button" @click="closeDialog">
+          <el-icon><Close /></el-icon>
+        </button>
+      </div>
+      
+      <!-- 加载中状态 -->
+      <div v-if="!streamReady && isReady" class="stream-loading">
+        <el-icon class="loading-icon"><Loading /></el-icon>
+        <span>串流加载中...</span>
+      </div>
+      
+      <div class="phone-frame">
+        <div class="phone-notch" />
+        <device-stream 
+          v-if="visible && deviceId && isReady" 
+          :device-id="deviceId" 
+          :auto-connect="true"
+          @stream-ready="onStreamReady"
+        />
+      </div>
+      <div class="resize-handle" @mousedown="startResize" />
     </div>
-    
-    <div class="phone-frame">
-      <div class="phone-notch" />
-      <device-stream 
-        v-if="visible && deviceId && isReady" 
-        :device-id="deviceId" 
-        :auto-connect="true"
-        @stream-ready="onStreamReady"
-      />
-    </div>
-    <div class="resize-handle" @mousedown="startResize"/>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import DeviceStream from './DeviceStream.vue';
-import { Close } from '@element-plus/icons-vue';
+import { Close, Loading } from '@element-plus/icons-vue';
 import { STREAM_WINDOW_CONFIG } from './config';
+import { ElMessage } from 'element-plus';
 
 const props = defineProps({
   modelValue: {
@@ -43,7 +53,16 @@ const emit = defineEmits(['update:modelValue', 'closed']);
 const visible = ref(false);
 // 对话框是否准备好（用于延迟加载iframe）
 const isReady = ref(false);
+// 流是否准备好
+const streamReady = ref(false);
 const dialogRef = ref<HTMLElement | null>(null);
+
+// 标题计算属性
+const title = computed(() => {
+  return streamReady.value 
+    ? `已连接到设备: ${props.deviceId}` 
+    : `连接到设备: ${props.deviceId}`;
+});
 
 // 拖拽相关状态
 const isDragging = ref(false);
@@ -58,12 +77,14 @@ const initialPosition = ref({ x: 0, y: 0 });
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     visible.value = true;
+    streamReady.value = false;
     // 添加一个小延迟，确保对话框完全打开后再加载iframe
     setTimeout(() => {
       isReady.value = true;
     }, 100);
   } else {
     isReady.value = false;
+    streamReady.value = false;
     setTimeout(() => {
       visible.value = false;
       emit('closed');
@@ -73,7 +94,8 @@ watch(() => props.modelValue, (newVal) => {
 
 // 流加载完成回调
 const onStreamReady = () => {
-  // 这里可以添加流准备好后的处理逻辑
+  streamReady.value = true;
+  ElMessage.success(`连接设备 ${props.deviceId} 成功`);
 };
 
 // 关闭窗口
@@ -189,6 +211,26 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.stream-dialog-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1999;
+}
+
+.stream-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
 .stream-window {
   position: fixed;
   top: 50%;
@@ -204,6 +246,32 @@ onBeforeUnmount(() => {
   flex-direction: column;
   z-index: 2000;
   user-select: none;
+}
+
+.stream-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  z-index: 10;
+}
+
+.loading-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .stream-header {

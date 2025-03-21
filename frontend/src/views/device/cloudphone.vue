@@ -939,6 +939,10 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.phone-preview :deep(.screenshot-loading) {
+  display: none !important; /* 完全隐藏加载提示 */
+}
+
 .phone-preview :deep(.screenshot-image) {
   width: 100%;
   height: 100%;
