@@ -52,6 +52,11 @@
     timestamp: 0
   };
   
+  // 连接状态稳定期
+  let connectionStabilityTimer = null;
+  const CONNECTION_STABILITY_PERIOD = 1000; // 连接成功后的稳定期(毫秒)
+  let isStabilizing = false; // 是否处于连接稳定期
+  
   // 构建完整的串流URL
   const streamUrl = computed(() => {
     if (!props.deviceId) return 'about:blank';
@@ -232,23 +237,54 @@
               // 清除连接超时定时器
               clearConnectionTimeout();
               
-              // 显示成功消息提示
-              ElMessage.success(`设备 ${props.deviceId} 连接成功`);
+              // 设置连接稳定期
+              isStabilizing = true;
+              if (connectionStabilityTimer) {
+                clearTimeout(connectionStabilityTimer);
+              }
               
-              emit('success', props.deviceId, { initialConnect: true });
+              connectionStabilityTimer = setTimeout(() => {
+                isStabilizing = false;
+                // 如果稳定期结束仍然连接正常，显示成功消息
+                if (!error.value) {
+                  // 显示成功消息提示
+                  ElMessage.success(`设备 ${props.deviceId} 连接成功`);
+                  emit('success', props.deviceId, { initialConnect: true });
+                }
+                connectionStabilityTimer = null;
+              }, CONNECTION_STABILITY_PERIOD);
               break;
               
             case 'disconnected':
               // 连接断开
-              if (!error.value) { // 避免重复触发错误
-                handleConnectionError(`连接断开: ${data.reason || '未知原因'} (代码: ${data.code || '未知'})`);
+              // 清除连接稳定期定时器
+              if (connectionStabilityTimer) {
+                clearTimeout(connectionStabilityTimer);
+                connectionStabilityTimer = null;
               }
+              
+              if (!error.value) { // 避免重复触发错误
+                // 如果是在连接稳定期内收到断开消息，给出更友好的提示
+                if (isStabilizing) {
+                  handleConnectionError(`设备连接失败: ${data.reason || '未知原因'} (代码: ${data.code || '未知'})`);
+                } else {
+                  handleConnectionError(`连接断开: ${data.reason || '未知原因'} (代码: ${data.code || '未知'})`);
+                }
+              }
+              isStabilizing = false;
               console.log(`设备 ${data.udid} 断开连接，代码: ${data.code}, 原因: ${data.reason}`);
               break;
               
             case 'error':
               // 连接错误
+              // 清除连接稳定期定时器
+              if (connectionStabilityTimer) {
+                clearTimeout(connectionStabilityTimer);
+                connectionStabilityTimer = null;
+              }
+              
               handleConnectionError(`连接错误: ${data.reason || '未知错误'}`);
+              isStabilizing = false;
               console.error(`设备 ${data.udid} 连接错误`);
               break;
           }
@@ -296,6 +332,12 @@
   onBeforeUnmount(() => {
     // 清除连接超时定时器
     clearConnectionTimeout();
+    
+    // 清除连接稳定期定时器
+    if (connectionStabilityTimer) {
+      clearTimeout(connectionStabilityTimer);
+      connectionStabilityTimer = null;
+    }
     
     // 移除消息事件监听器
     window.removeEventListener('message', handleIframeMessage);
