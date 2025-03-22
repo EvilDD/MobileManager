@@ -51,8 +51,33 @@
     const encodedDeviceId = encodeURIComponent(props.deviceId);
     // 使用ws服务器环境变量
     const wsBaseUrl = import.meta.env.VITE_WSCRCPY_WS_SERVER || `ws://${wscrcpyBaseUrl.value.replace(/^https?:\/\//, '')}`;
-    const wsUrl = encodeURIComponent(`${wsBaseUrl}/?action=proxy-adb&remote=tcp:8886&udid=${props.deviceId}`);
-    return `${wscrcpyBaseUrl.value}/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
+    
+    // 确保wsUrl是完整的URL
+    let wsUrl;
+    if (wsBaseUrl.startsWith('/')) {
+      // 如果是相对路径，需要添加当前站点的协议和主机名
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      wsUrl = encodeURIComponent(`${protocol}//${host}${wsBaseUrl}/?action=proxy-adb&remote=tcp:8886&udid=${props.deviceId}`);
+    } else {
+      // 如果已经是完整URL
+      wsUrl = encodeURIComponent(`${wsBaseUrl}/?action=proxy-adb&remote=tcp:8886&udid=${props.deviceId}`);
+    }
+
+    // 构建完整的iframe URL
+    let fullStreamUrl;
+    if (wscrcpyBaseUrl.value.startsWith('/')) {
+      // 如果服务器URL是相对路径，添加当前站点的协议和主机名
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      fullStreamUrl = `${protocol}//${host}${wscrcpyBaseUrl.value}/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
+    } else {
+      // 如果已经是完整URL
+      fullStreamUrl = `${wscrcpyBaseUrl.value}/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
+    }
+    
+    console.log('构建串流URL:', fullStreamUrl);
+    return fullStreamUrl;
   });
   
   // 开始连接
