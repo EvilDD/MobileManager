@@ -32,7 +32,7 @@
     }
   });
   
-  const emit = defineEmits(['success', 'stream-error', 'loading-start']);
+  const emit = defineEmits(['success', 'stream-error', 'loading-start', 'orientation-change']);
   
   const loading = ref(true);
   const error = ref(false);
@@ -45,6 +45,12 @@
   let connectionTimeoutTimer = null;
   // 连接超时时间(毫秒)
   const CONNECTION_TIMEOUT = 10000;
+  
+  // 屏幕方向状态记忆和防抖
+  const lastOrientationData = {
+    orientation: null,
+    timestamp: 0
+  };
   
   // 构建完整的串流URL
   const streamUrl = computed(() => {
@@ -201,48 +207,76 @@
   const handleIframeMessage = (event) => {
     const data = event.data;
     
-    // 仅处理wscrcpy的WebSocket状态消息
-    if (data && data.type === 'ws-status') {
-      console.log(`收到WebSocket状态通知:`, data);
+    // 根据消息类型处理
+    if (data && data.type) {
+      console.log(`收到iframe消息:`, data);
       
-      // 检查设备ID是否匹配
-      if (data.udid && data.udid.includes(props.deviceId)) {
-        switch(data.status) {
-          case 'connecting':
-            // 连接中状态
-            loading.value = true;
-            error.value = false;
-            console.log(`设备 ${data.udid} 正在连接到 ${data.url}`);
-            break;
+      // 处理WebSocket状态消息
+      if (data.type === 'ws-status') {
+        // 检查设备ID是否匹配
+        if (data.udid && data.udid.includes(props.deviceId)) {
+          switch(data.status) {
+            case 'connecting':
+              // 连接中状态
+              loading.value = true;
+              error.value = false;
+              console.log(`设备 ${data.udid} 正在连接到 ${data.url}`);
+              break;
+              
+            case 'connected':
+              // 连接成功
+              loading.value = false;
+              error.value = false;
+              console.log(`设备 ${data.udid} 已连接到 ${data.url}`);
+              
+              // 清除连接超时定时器
+              clearConnectionTimeout();
+              
+              // 显示成功消息提示
+              ElMessage.success(`设备 ${props.deviceId} 连接成功`);
+              
+              emit('success', props.deviceId, { initialConnect: true });
+              break;
+              
+            case 'disconnected':
+              // 连接断开
+              if (!error.value) { // 避免重复触发错误
+                handleConnectionError(`连接断开: ${data.reason || '未知原因'} (代码: ${data.code || '未知'})`);
+              }
+              console.log(`设备 ${data.udid} 断开连接，代码: ${data.code}, 原因: ${data.reason}`);
+              break;
+              
+            case 'error':
+              // 连接错误
+              handleConnectionError(`连接错误: ${data.reason || '未知错误'}`);
+              console.error(`设备 ${data.udid} 连接错误`);
+              break;
+          }
+        }
+      }
+      
+      // 处理屏幕方向消息
+      else if (data.type === 'screen-orientation') {
+        // 检查设备ID是否匹配
+        if (data.udid && data.udid.includes(props.deviceId)) {
+          // 检查方向是否真的变化了，并实施防抖 (500ms)
+          const now = Date.now();
+          if (data.orientation !== lastOrientationData.orientation || now - lastOrientationData.timestamp > 500) {
+            console.log(`设备 ${data.udid} 屏幕方向: ${data.status}, 旋转: ${data.rotation}度, 尺寸: ${data.width}x${data.height}`);
             
-          case 'connected':
-            // 连接成功
-            loading.value = false;
-            error.value = false;
-            console.log(`设备 ${data.udid} 已连接到 ${data.url}`);
+            // 记录本次方向信息
+            lastOrientationData.orientation = data.orientation;
+            lastOrientationData.timestamp = now;
             
-            // 清除连接超时定时器
-            clearConnectionTimeout();
-            
-            // 显示成功消息提示
-            ElMessage.success(`设备 ${props.deviceId} 连接成功`);
-            
-            emit('success', props.deviceId, { initialConnect: true });
-            break;
-            
-          case 'disconnected':
-            // 连接断开
-            if (!error.value) { // 避免重复触发错误
-              handleConnectionError(`连接断开: ${data.reason || '未知原因'} (代码: ${data.code || '未知'})`);
-            }
-            console.log(`设备 ${data.udid} 断开连接，代码: ${data.code}, 原因: ${data.reason}`);
-            break;
-            
-          case 'error':
-            // 连接错误
-            handleConnectionError(`连接错误: ${data.reason || '未知错误'}`);
-            console.error(`设备 ${data.udid} 连接错误`);
-            break;
+            // 向父组件发送屏幕方向变化事件
+            emit('orientation-change', {
+              deviceId: props.deviceId,
+              orientation: data.status,
+              rotation: data.rotation,
+              width: data.width,
+              height: data.height
+            });
+          }
         }
       }
     }

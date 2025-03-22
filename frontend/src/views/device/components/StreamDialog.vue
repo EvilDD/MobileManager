@@ -29,7 +29,7 @@
         </div>
       </div>
       
-      <div class="phone-frame">
+      <div class="phone-frame" :class="{ 'landscape': isLandscape }">
         <div class="phone-notch" />
         <device-stream 
           v-if="visible && deviceId && isReady" 
@@ -40,6 +40,7 @@
           @success="onStreamReady"
           @stream-error="onStreamError"
           @loading-start="onLoadingStart"
+          @orientation-change="onOrientationChange"
         />
       </div>
       <div class="resize-handle" @mousedown="startResize" />
@@ -81,6 +82,8 @@ const streamReady = ref(false);
 const streamError = ref(false);
 // 错误信息
 const errorMessage = ref('');
+// 是否横屏
+const isLandscape = ref(false);
 const dialogRef = ref<HTMLElement | null>(null);
 const streamRef = ref(null);
 
@@ -92,7 +95,7 @@ const title = computed(() => {
   if (!streamReady.value) {
     return `正在连接设备 ${props.deviceId || ''}...`;
   }
-  return `连接设备 ${props.deviceId || ''} 成功`;
+  return `${isLandscape.value ? '横屏' : '竖屏'} - 设备 ${props.deviceId || ''}`;
 });
 
 // 拖拽相关状态
@@ -131,6 +134,50 @@ watch(() => props.modelValue, (newVal) => {
     }, 200);
   }
 });
+
+// 处理屏幕方向变化
+const onOrientationChange = (data) => {
+  console.log('收到屏幕方向变化:', data);
+  
+  // 获取上一次的方向状态
+  const previousOrientation = isLandscape.value ? 'landscape' : 'portrait';
+  
+  // 更新屏幕方向状态
+  isLandscape.value = data.orientation === 'landscape';
+  
+  // 方向真正发生变化时才显示消息
+  if (streamReady.value && previousOrientation !== data.orientation) {
+    ElMessage.info(`设备 ${props.deviceId} 切换到${isLandscape.value ? '横屏' : '竖屏'}模式`);
+  }
+  
+  // 调整对话框大小以适应新的屏幕方向
+  adjustWindowForOrientation(data);
+};
+
+// 根据屏幕方向调整窗口大小
+const adjustWindowForOrientation = (data) => {
+  if (!dialogRef.value) return;
+  
+  // 获取当前窗口尺寸
+  const currentWidth = dialogRef.value.clientWidth;
+  const currentHeight = dialogRef.value.clientHeight;
+  
+  if (data.orientation === 'landscape') {
+    // 横屏：确保宽度大于高度
+    if (currentWidth < currentHeight) {
+      // 交换宽高
+      dialogRef.value.style.width = `${currentHeight}px`;
+      dialogRef.value.style.height = `${currentWidth}px`;
+    }
+  } else {
+    // 竖屏：确保高度大于宽度
+    if (currentWidth > currentHeight) {
+      // 交换宽高
+      dialogRef.value.style.width = `${currentHeight}px`;
+      dialogRef.value.style.height = `${currentWidth}px`;
+    }
+  }
+};
 
 // 重试连接
 const retryConnection = () => {
@@ -383,6 +430,24 @@ const onLoadingStart = (deviceId) => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: all 0.3s ease;
+}
+
+/* 横屏样式 */
+.phone-frame.landscape {
+  border-radius: 20px;
+}
+
+.phone-frame.landscape .phone-notch {
+  left: auto;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 120px;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 0;
+  border-top-left-radius: 10px;
 }
 
 .phone-notch {
@@ -397,6 +462,7 @@ const onLoadingStart = (deviceId) => {
   border-bottom-right-radius: 10px;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transition: all 0.3s ease;
 }
 
 :deep(.device-stream-container) {

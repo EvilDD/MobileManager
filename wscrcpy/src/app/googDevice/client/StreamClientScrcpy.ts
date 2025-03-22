@@ -60,6 +60,11 @@ export class StreamClientScrcpy
     private filePushHandler?: FilePushHandler;
     private fitToScreen?: boolean;
     private readonly streamReceiver: StreamReceiverScrcpy;
+    private lastOrientationInfo = {
+        rotation: -1,
+        status: '',
+        timestamp: 0
+    };
 
     public static registerPlayer(playerClass: PlayerClass): void {
         if (playerClass.isSupported()) {
@@ -200,6 +205,43 @@ export class StreamClientScrcpy
         }
         const { videoSettings, screenInfo } = info;
         this.player.setDisplayInfo(info.displayInfo);
+        
+        // 发送屏幕方向状态通知到父窗口
+        if (screenInfo) {
+            const { deviceRotation, videoSize } = screenInfo;
+            const { width, height } = videoSize;
+            const isLandscape = width > height || deviceRotation === 1 || deviceRotation === 3;
+            const status = isLandscape ? 'landscape' : 'portrait';
+            
+            // 检查方向是否真的变化了，或最后一次发送超过1秒
+            const now = Date.now();
+            if (deviceRotation !== this.lastOrientationInfo.rotation || 
+                status !== this.lastOrientationInfo.status || 
+                now - this.lastOrientationInfo.timestamp > 1000) {
+                
+                try {
+                    window.parent.postMessage({
+                        type: 'screen-orientation',
+                        status: status,
+                        rotation: deviceRotation,
+                        width: width,
+                        height: height,
+                        udid: this.params.udid,
+                    }, '*');
+                    console.log('[StreamClientScrcpy] Sent screen orientation:', status, 'rotation:', deviceRotation);
+                    
+                    // 更新最后发送的方向信息
+                    this.lastOrientationInfo = {
+                        rotation: deviceRotation,
+                        status: status,
+                        timestamp: now
+                    };
+                } catch (error) {
+                    console.error('[StreamClientScrcpy] Failed to send orientation message to parent:', error);
+                }
+            }
+        }
+        
         if (typeof this.fitToScreen !== 'boolean') {
             this.fitToScreen = this.player.getFitToScreenStatus();
         }
