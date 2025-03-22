@@ -41,6 +41,11 @@
   const wscrcpyBaseUrl = computed(() => props.serverUrl || 'http://localhost:8000');
   const iframeSrc = ref('about:blank');
   
+  // 连接超时定时器
+  let connectionTimeoutTimer = null;
+  // 连接超时时间(毫秒)
+  const CONNECTION_TIMEOUT = 10000;
+  
   // 构建完整的串流URL
   const streamUrl = computed(() => {
     if (!props.deviceId) return 'about:blank';
@@ -88,6 +93,12 @@
     // 触发事件指示正在加载中
     emit('loading-start', props.deviceId);
     
+    // 清除已有的超时定时器
+    clearConnectionTimeout();
+    
+    // 设置连接超时定时器
+    startConnectionTimeout();
+    
     // 使用nextTick确保DOM已渲染
     nextTick(() => {
       console.log('开始连接设备:', props.deviceId, '服务器地址:', wscrcpyBaseUrl.value);
@@ -118,6 +129,24 @@
     });
   };
   
+  // 设置连接超时定时器
+  const startConnectionTimeout = () => {
+    connectionTimeoutTimer = setTimeout(() => {
+      // 如果还在加载中，且没有错误，则认为连接超时
+      if (loading.value && !error.value) {
+        handleConnectionError('连接超时，wscrcpy服务可能不可用');
+      }
+    }, CONNECTION_TIMEOUT);
+  };
+  
+  // 清除连接超时定时器
+  const clearConnectionTimeout = () => {
+    if (connectionTimeoutTimer) {
+      clearTimeout(connectionTimeoutTimer);
+      connectionTimeoutTimer = null;
+    }
+  };
+  
   // 重试连接
   const retryConnect = () => {
     console.log('重试连接设备:', props.deviceId);
@@ -127,6 +156,9 @@
     loading.value = true;
     errorMessage.value = '';
     iframeSrc.value = 'about:blank';
+    
+    // 清除已有的超时定时器
+    clearConnectionTimeout();
     
     // 短暂延迟后开始新连接，确保iframe刷新
     setTimeout(() => {
@@ -148,9 +180,15 @@
     
     console.error('串流连接错误:', errorMsg, '服务器地址:', wscrcpyBaseUrl.value);
     
+    // 清除连接超时定时器
+    clearConnectionTimeout();
+    
     error.value = true;
     loading.value = false;
     errorMessage.value = errorMsg || '连接失败';
+    
+    // 显示错误消息提示
+    ElMessage.error(`设备 ${props.deviceId} ${errorMessage.value}`);
     
     // 触发错误事件
     emit('stream-error', {
@@ -182,6 +220,13 @@
             loading.value = false;
             error.value = false;
             console.log(`设备 ${data.udid} 已连接到 ${data.url}`);
+            
+            // 清除连接超时定时器
+            clearConnectionTimeout();
+            
+            // 显示成功消息提示
+            ElMessage.success(`设备 ${props.deviceId} 连接成功`);
+            
             emit('success', props.deviceId, { initialConnect: true });
             break;
             
@@ -215,6 +260,9 @@
   
   // 组件卸载前，清理资源
   onBeforeUnmount(() => {
+    // 清除连接超时定时器
+    clearConnectionTimeout();
+    
     // 移除消息事件监听器
     window.removeEventListener('message', handleIframeMessage);
     
