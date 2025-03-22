@@ -30,7 +30,7 @@
     },
     serverUrl: {
       type: String,
-      default: 'http://localhost:8000'
+      default: import.meta.env.VITE_WSCRCPY_SERVER || 'http://localhost:8000'
     }
   });
   
@@ -49,7 +49,9 @@
     if (!props.deviceId) return 'about:blank';
     
     const encodedDeviceId = encodeURIComponent(props.deviceId);
-    const wsUrl = encodeURIComponent(`ws://${wscrcpyBaseUrl.value.replace(/^https?:\/\//, '')}/?action=proxy-adb&remote=tcp:8886&udid=${props.deviceId}`);
+    // 使用ws服务器环境变量
+    const wsBaseUrl = import.meta.env.VITE_WSCRCPY_WS_SERVER || `ws://${wscrcpyBaseUrl.value.replace(/^https?:\/\//, '')}`;
+    const wsUrl = encodeURIComponent(`${wsBaseUrl}/?action=proxy-adb&remote=tcp:8886&udid=${props.deviceId}`);
     return `${wscrcpyBaseUrl.value}/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
   });
   

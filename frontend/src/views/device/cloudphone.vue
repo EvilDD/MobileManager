@@ -123,7 +123,7 @@ const filteredDevices = computed(() => {
 // 流对话框控制
 const streamDialogVisible = ref(false);
 const selectedDevice = ref<Device | null>(null);
-const streamServerUrl = ref('http://localhost:8000'); // 默认服务器URL，可通过环境变量配置
+const streamServerUrl = ref(import.meta.env.VITE_WSCRCPY_SERVER); // 使用环境变量配置服务器URL
 
 // 截图刷新设置
 const autoRefresh = ref(true);
@@ -265,8 +265,8 @@ const connectToPhone = (device: Device) => {
   
   // 设置选中的设备并打开对话框
   selectedDevice.value = device;
-  // 尝试从环境变量读取服务器地址，否则使用默认值
-  streamServerUrl.value = import.meta.env.VITE_WSCRCPY_SERVER_URL || 'http://localhost:8000';
+  // 从环境变量读取服务器地址
+  streamServerUrl.value = import.meta.env.VITE_WSCRCPY_SERVER || 'http://localhost:8000';
   streamDialogVisible.value = true;
 };
 

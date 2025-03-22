@@ -39,13 +39,17 @@ const deviceId = ref('');
 const deviceName = ref('加载中...');
 const deviceStatus = ref('offline');
 
+// 服务器URL配置 - 从环境变量读取
+const serverUrl = import.meta.env.VITE_WSCRCPY_SERVER || 'http://localhost:8000';
+const wsServerUrl = import.meta.env.VITE_WSCRCPY_WS_SERVER || 'ws://localhost:8000';
+
 // 构建完整的串流URL
 const streamUrl = computed(() => {
   if (!deviceId.value) return 'about:blank';
   
   const encodedDeviceId = encodeURIComponent(deviceId.value);
-  const wsUrl = encodeURIComponent(`ws://localhost:8000/?action=proxy-adb&remote=tcp:8886&udid=${deviceId.value}`);
-  return `http://localhost:8000/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
+  const wsUrl = encodeURIComponent(`${wsServerUrl}/?action=proxy-adb&remote=tcp:8886&udid=${deviceId.value}`);
+  return `${serverUrl}/#!action=stream&udid=${encodedDeviceId}&player=webcodecs&ws=${wsUrl}`;
 });
 
 // 获取设备详情

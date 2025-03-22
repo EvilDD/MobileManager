@@ -65,7 +65,7 @@ const props = defineProps({
   },
   serverUrl: {
     type: String,
-    default: 'http://localhost:8000'
+    default: import.meta.env.VITE_WSCRCPY_SERVER || 'http://localhost:8000'
   }
 });
 
