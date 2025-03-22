@@ -146,17 +146,6 @@ const retryConnection = () => {
     
     // 直接调用流组件的重试方法
     streamRef.value.retryConnect();
-    
-    // 设置超时检查，确保错误状态能够同步
-    setTimeout(() => {
-      // 如果5秒后仍然没有成功或新的错误状态，恢复错误UI
-      if (!streamReady.value && !streamError.value) {
-        isLoading.value = false;
-        streamError.value = true;
-        errorMessage.value = '连接超时，请再次尝试';
-        ElMessage.error('连接超时，请再次尝试');
-      }
-    }, 5000);
   }
 };
 
@@ -166,13 +155,6 @@ const onStreamReady = (deviceId, data) => {
   streamReady.value = true;
   streamError.value = false;
   isLoading.value = false;
-  
-  // 只有首次连接成功才显示消息
-  if (data?.initialConnect) {
-    console.log('显示连接成功消息');
-    // 显示成功提示消息
-    ElMessage.success(`连接设备 ${props.deviceId} 成功`);
-  }
 };
 
 // 流加载错误回调
@@ -180,9 +162,6 @@ const onStreamError = (errorData) => {
   streamError.value = true;
   isLoading.value = false;
   errorMessage.value = errorData.error || '连接失败';
-  
-  // 显示错误消息
-  ElMessage.error(errorMessage.value);
 };
 
 // 关闭窗口

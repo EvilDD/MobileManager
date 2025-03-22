@@ -47,6 +47,19 @@ export class StreamReceiver<P extends ParamsStream> extends ManagerClient<Params
 
     constructor(params: P) {
         super(params);
+        
+        // 向父iframe发送连接中状态通知
+        try {
+            window.parent.postMessage({
+                type: 'ws-status',
+                status: 'connecting',
+                udid: this.params.udid,
+                url: this.params.ws || null,
+            }, '*');
+        } catch (error) {
+            console.error('Failed to send connecting message to parent:', error);
+        }
+        
         this.openNewConnection();
         if (this.ws) {
             this.ws.binaryType = 'arraybuffer';
@@ -127,6 +140,20 @@ export class StreamReceiver<P extends ParamsStream> extends ManagerClient<Params
     protected onSocketClose(ev: CloseEvent): void {
         console.log(`${TAG}. WS closed: ${ev.reason}`);
         this.emit('disconnected', ev);
+        
+        // 向父iframe发送连接关闭通知
+        try {
+            window.parent.postMessage({
+                type: 'ws-status',
+                status: 'disconnected',
+                code: ev.code,
+                reason: ev.reason,
+                udid: this.params.udid,
+                url: this.params.ws || null,
+            }, '*');
+        } catch (error) {
+            console.error('Failed to send disconnect message to parent:', error);
+        }
     }
 
     protected onSocketMessage(event: MessageEvent): void {
@@ -151,6 +178,19 @@ export class StreamReceiver<P extends ParamsStream> extends ManagerClient<Params
 
     protected onSocketOpen(): void {
         this.emit('connected', void 0);
+        
+        // 向父iframe发送连接成功通知
+        try {
+            window.parent.postMessage({
+                type: 'ws-status',
+                status: 'connected',
+                udid: this.params.udid,
+                url: this.params.ws || null,
+            }, '*');
+        } catch (error) {
+            console.error('Failed to send connect message to parent:', error);
+        }
+        
         let e = this.events.shift();
         while (e) {
             this.sendEvent(e);

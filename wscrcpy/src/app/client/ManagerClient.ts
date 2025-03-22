@@ -43,6 +43,21 @@ export abstract class ManagerClient<P extends ParamsBase, TE extends EventMap> e
                 ws.addEventListener('close', () => {
                     ManagerClient.sockets.delete(url);
                 });
+                
+                ws.addEventListener('error', (event) => {
+                    console.error('WebSocket error:', event);
+                    try {
+                        window.parent.postMessage({
+                            type: 'ws-status',
+                            status: 'error',
+                            url: url,
+                            udid: (this as any).params?.udid || null,
+                        }, '*');
+                    } catch (error) {
+                        console.error('Failed to send error message to parent:', error);
+                    }
+                });
+                
                 const newMultiplexer = Multiplexer.wrap(ws);
                 newMultiplexer.on('empty', () => {
                     newMultiplexer.close();
@@ -57,6 +72,21 @@ export abstract class ManagerClient<P extends ParamsBase, TE extends EventMap> e
             this.ws = ws;
         } else {
             const ws = new WebSocket(url);
+            
+            ws.addEventListener('error', (event) => {
+                console.error('WebSocket error:', event);
+                try {
+                    window.parent.postMessage({
+                        type: 'ws-status',
+                        status: 'error',
+                        url: url,
+                        udid: (this as any).params?.udid || null,
+                    }, '*');
+                } catch (error) {
+                    console.error('Failed to send error message to parent:', error);
+                }
+            });
+            
             ws.addEventListener('open', this.onSocketOpen.bind(this));
             ws.addEventListener('message', this.onSocketMessage.bind(this));
             ws.addEventListener('close', this.onSocketClose.bind(this));

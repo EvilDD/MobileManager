@@ -5,8 +5,6 @@
         :src="iframeSrc"
         class="device-stream-frame"
         :style="{ visibility: loading || error ? 'hidden' : 'visible' }"
-        @load="onIframeLoaded"
-        @error="onIframeError"
         scrolling="no"
         sandbox="allow-scripts allow-same-origin allow-forms"
       />
@@ -42,7 +40,6 @@
   const streamFrame = ref(null);
   const wscrcpyBaseUrl = computed(() => props.serverUrl || 'http://localhost:8000');
   const iframeSrc = ref('about:blank');
-  const connectionMonitorTimer = ref(null);
   
   // 构建完整的串流URL
   const streamUrl = computed(() => {
@@ -111,14 +108,7 @@
           display: block !important;
         `;
         
-        // 设置超时定时器
-        const connectionTimeout = setTimeout(() => {
-          if (loading.value && !error.value) {
-            handleConnectionError('连接超时，请检查设备状态和服务地址');
-          }
-        }, 15000); // 15秒超时
-        
-        // 直接加载串流URL，不再使用测试图片
+        // 直接加载串流URL
         console.log('加载串流URL:', streamUrl.value);
         iframeSrc.value = streamUrl.value;
       } else {
@@ -131,12 +121,6 @@
   // 重试连接
   const retryConnect = () => {
     console.log('重试连接设备:', props.deviceId);
-    
-    // 先清理可能存在的资源
-    if (connectionMonitorTimer.value) {
-      clearInterval(connectionMonitorTimer.value);
-      connectionMonitorTimer.value = null;
-    }
     
     // 重置状态
     error.value = false;
@@ -158,138 +142,15 @@
     }, 500);
   };
   
-  // iframe加载完成
-  const onIframeLoaded = () => {
-    console.log('iframe加载状态:', loading.value);
-    if (!loading.value) return; // 如果不是加载中状态则忽略
-    
-    // 延迟检查，确保内容已完全加载
-    setTimeout(() => {
-      try {
-        // 检查iframe是否真正加载成功
-        if (streamFrame.value) {
-          let hasError = false;
-          
-          // 检查iframe的URL是否被重定向或包含错误标识
-          try {
-            const currentUrl = streamFrame.value.contentWindow?.location.href;
-            if (currentUrl && (currentUrl.includes('error') || !currentUrl.includes(wscrcpyBaseUrl.value))) {
-              console.log('检测到URL重定向或错误页面:', currentUrl);
-              hasError = true;
-            }
-          } catch (e) {
-            // 访问iframe的location可能因跨域导致错误
-            console.log('无法检查iframe URL (可能是跨域限制)');
-          }
-          
-          // 检查iframe标题是否包含错误信息
-          try {
-            const iframeTitle = streamFrame.value.contentDocument?.title;
-            if (iframeTitle && (iframeTitle.includes('拒绝') || 
-                                iframeTitle.includes('错误') || 
-                                iframeTitle.includes('Error') || 
-                                iframeTitle.includes('Refused'))) {
-              console.log('检测到iframe标题包含错误信息:', iframeTitle);
-              hasError = true;
-            }
-          } catch (e) {
-            // 访问iframe的document可能因跨域限制导致错误
-            console.log('无法检查iframe标题 (可能是跨域限制)');
-          }
-          
-          // 检查iframe内容的高度，如果太小可能是错误页面
-          if (streamFrame.value.clientHeight < 100) {
-            console.log('iframe内容高度异常，可能是错误页面');
-            hasError = true;
-          }
-          
-          // 如果有错误，触发错误处理
-          if (hasError) {
-            handleConnectionError('连接被拒绝或发生错误，请检查设备和服务状态');
-            return;
-          }
-          
-          // 如果没有错误，设置加载完成状态，并且只触发一次成功事件
-          if (loading.value) {
-            console.log('iframe加载完成，触发success事件');
-            loading.value = false;
-            emit('success', props.deviceId, { initialConnect: true });
-            
-            // 开始连接监控
-            startConnectionMonitor();
-          }
-        } else {
-          handleConnectionError('无法获取流内容');
-        }
-      } catch (err) {
-        console.error('检查iframe内容时发生错误:', err);
-        handleConnectionError('连接过程中出现错误');
-      }
-    }, 1000); // 给予1秒时间让内容完全加载
-  };
-  
-  // iframe加载错误
-  const onIframeError = (event) => {
-    console.error('iframe加载失败:', event);
-    handleConnectionError('连接失败，服务器无响应');
-  };
-  
-  // 启动定期连接监控
-  const startConnectionMonitor = () => {
-    // 清除可能存在的旧定时器
-    if (connectionMonitorTimer.value) {
-      clearInterval(connectionMonitorTimer.value);
-      connectionMonitorTimer.value = null;
-    }
-    
-    console.log('开始连接监控');
-    
-    // 每10秒检查一次连接状态，用于检测断流
-    connectionMonitorTimer.value = window.setInterval(() => {
-      if (streamFrame.value) {
-        // 尝试使用simpler方法检测断流：检查iframe是否仍然加载原始URL
-        const iframeCurrentSrc = streamFrame.value.src;
-        
-        try {
-          // 尝试访问contentWindow，检查iframe是否还可以访问
-          // 如果iframe被重定向或断流，可能会导致错误
-          const contentWindow = streamFrame.value.contentWindow;
-          
-          // 检查iframe是否重定向
-          if (contentWindow && contentWindow.location && 
-              contentWindow.location.href !== streamUrl.value &&
-              !contentWindow.location.href.includes(wscrcpyBaseUrl.value)) {
-            handleConnectionError('串流已断开，可能是连接中断');
-          }
-        } catch (err) {
-          // 跨域错误是正常的，但如果不是SecurityError，可能是断流
-          if (err.name !== 'SecurityError') {
-            console.warn('连接监控检测到异常:', err);
-            handleConnectionError('连接异常，可能是串流已中断');
-          }
-        }
-      }
-    }, 10000);
-  };
-  
   // 处理连接错误
   const handleConnectionError = (errorMsg) => {
     if (error.value) return; // 防止重复触发
     
     console.error('串流连接错误:', errorMsg, '服务器地址:', wscrcpyBaseUrl.value);
     
-    // 停止所有连接监控
-    if (connectionMonitorTimer.value) {
-      clearInterval(connectionMonitorTimer.value);
-      connectionMonitorTimer.value = null;
-    }
-    
     error.value = true;
     loading.value = false;
     errorMessage.value = errorMsg || '连接失败';
-    
-    // 置空iframe源，防止继续尝试加载
-    iframeSrc.value = '';
     
     // 触发错误事件
     emit('stream-error', {
@@ -298,57 +159,55 @@
     });
   };
   
-  // 检查连接状态
-  const checkConnectionState = () => {
-    if (!streamFrame.value) return;
+  // 处理来自iframe的消息事件
+  const handleIframeMessage = (event) => {
+    const data = event.data;
     
-    try {
-      // 先检查iframe是否能访问
-      if (streamFrame.value.contentWindow) {
-        // 如果iframe的src与预期URL一致，且能获取contentWindow，认为连接建立
-        // 但由于跨域限制，我们无法直接检查内容，只能通过间接方式判断
-        // 如果iframe已经加载，且没有重定向，大概率连接成功
-        if (!error.value && loading.value && 
-            iframeSrc.value === streamUrl.value && 
-            streamFrame.value.contentWindow !== null) {
-          // 假定加载成功
-          console.log('连接状态检查: iframe已加载完成');
-          loading.value = false;
-          // 不再触发success事件，避免多次提示
+    // 仅处理wscrcpy的WebSocket状态消息
+    if (data && data.type === 'ws-status') {
+      console.log(`收到WebSocket状态通知:`, data);
+      
+      // 检查设备ID是否匹配
+      if (data.udid && data.udid.includes(props.deviceId)) {
+        switch(data.status) {
+          case 'connecting':
+            // 连接中状态
+            loading.value = true;
+            error.value = false;
+            console.log(`设备 ${data.udid} 正在连接到 ${data.url}`);
+            break;
+            
+          case 'connected':
+            // 连接成功
+            loading.value = false;
+            error.value = false;
+            console.log(`设备 ${data.udid} 已连接到 ${data.url}`);
+            emit('success', props.deviceId, { initialConnect: true });
+            break;
+            
+          case 'disconnected':
+            // 连接断开
+            if (!error.value) { // 避免重复触发错误
+              handleConnectionError(`连接断开: ${data.reason || '未知原因'} (代码: ${data.code || '未知'})`);
+            }
+            console.log(`设备 ${data.udid} 断开连接，代码: ${data.code}, 原因: ${data.reason}`);
+            break;
+            
+          case 'error':
+            // 连接错误
+            handleConnectionError(`连接错误: ${data.reason || '未知错误'}`);
+            console.error(`设备 ${data.udid} 连接错误`);
+            break;
         }
       }
-    } catch (err) {
-      console.error('检查连接状态失败:', err);
-      // 由于跨域限制，不能直接判断连接状态，保持当前状态不变
-      // 只有在明确失败的情况下才更新状态
-      if (err.name !== 'SecurityError') {
-        handleConnectionError('连接异常');
-      }
-    }
-  };
-  
-  // 开始定期检查连接状态
-  const startConnectionCheck = () => {
-    // 清除可能存在的旧定时器
-    stopConnectionCheck();
-    
-    // 创建新的定时器，但将间隔改长，避免频繁报错
-    // 并且只检查一次
-    connectionMonitorTimer.value = window.setTimeout(() => {
-      checkConnectionState();
-    }, 5000);
-  };
-  
-  // 停止连接状态检查
-  const stopConnectionCheck = () => {
-    if (connectionMonitorTimer.value !== null) {
-      window.clearTimeout(connectionMonitorTimer.value);
-      connectionMonitorTimer.value = null;
     }
   };
   
   // 组件挂载时，自动连接
   onMounted(() => {
+    // 添加window消息事件监听器
+    window.addEventListener('message', handleIframeMessage);
+    
     if (props.autoConnect && props.deviceId) {
       startConnect();
     }
@@ -356,7 +215,9 @@
   
   // 组件卸载前，清理资源
   onBeforeUnmount(() => {
-    stopConnectionCheck();
+    // 移除消息事件监听器
+    window.removeEventListener('message', handleIframeMessage);
+    
     if (streamFrame.value) {
       streamFrame.value.src = 'about:blank';
     }
