@@ -22,12 +22,13 @@ export default {
       }
     },
     {
-      path: "/device/empty",
-      name: "DeviceEmpty",
-      component: () => import("@/views/device/cloudphone.vue"),
+      path: "/device/sync",
+      name: "DeviceSync",
+      component: () => import("@/views/device/sync.vue"),
       meta: {
-        title: "空路由",
-        showLink: false
+        title: "云机同步",
+        icon: "ri:cloud-line",
+        showParent: true
       }
     }
   ]
