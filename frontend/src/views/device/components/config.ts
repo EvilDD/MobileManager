@@ -2,7 +2,7 @@
 export const STREAM_WINDOW_CONFIG = {
   // 默认尺寸
   DEFAULT_WIDTH: 480,  // 手机屏幕的一半宽度
-  DEFAULT_HEIGHT: 960, // 手机屏幕的一半高度
+  DEFAULT_HEIGHT: 990, // 手机屏幕的一半高度
   
   // 最小尺寸限制
   MIN_WIDTH: 400,

@@ -88,7 +88,7 @@ const captureScreenshot = async () => {
       quality: props.quality
     });
     
-    console.log("截图响应数据:", JSON.stringify(res).slice(0, 100) + "...");
+    // console.log("截图响应数据:", JSON.stringify(res).slice(0, 100) + "...");
     
     // 确保data字段存在
     if (!res.data) {
@@ -129,7 +129,7 @@ const captureScreenshot = async () => {
           // 移除可能的空白字符并添加前缀
           imageData.value = `data:image/jpeg;base64,${imgData.replace(/^[\s\r\n]+|[\s\r\n]+$/g, '')}`;
         }
-        console.log("截图数据已获取，长度:", (imageData.value?.length || 0));
+        // console.log("截图数据已获取，长度:", (imageData.value?.length || 0));
         emit('screenshot-ready', imageData.value);
         
         // 不自动启动连接状态检查

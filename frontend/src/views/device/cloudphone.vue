@@ -134,13 +134,13 @@ const screenshotStatus = ref<Record<string, { success: boolean; error?: string }
 
 // 截图事件处理
 const handleScreenshotReady = (deviceId: string, imageData: string) => {
-  console.log(`设备 ${deviceId} 截图加载成功`);
+  // console.log(`设备 ${deviceId} 截图加载成功`);
   // 更新截图状态
   screenshotStatus.value[deviceId] = { success: true };
 };
 
 const handleScreenshotError = (deviceId: string, error: string) => {
-  console.error(`设备 ${deviceId} 截图加载失败:`, error);
+  // console.error(`设备 ${deviceId} 截图加载失败:`, error);
   // 更新截图状态
   screenshotStatus.value[deviceId] = { success: false, error };
 };
