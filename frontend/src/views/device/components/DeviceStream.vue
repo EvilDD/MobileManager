@@ -1,5 +1,5 @@
 <template>
-    <div class="device-stream-container" :class="{ 'loading': loading, 'error': error }">  
+    <div class="device-stream-container" :class="{ 'loading': loading, 'error': error, 'landscape': isLandscape }">  
       <iframe 
         ref="streamFrame"
         :src="iframeSrc"
@@ -40,6 +40,7 @@
   const streamFrame = ref(null);
   const wscrcpyBaseUrl = computed(() => props.serverUrl || 'http://localhost:8000');
   const iframeSrc = ref('about:blank');
+  const isLandscape = ref(false); // 添加横屏状态变量
   
   // 连接超时定时器
   let connectionTimeoutTimer = null;
@@ -116,19 +117,7 @@
       
       // 先手动强制设置iframe容器尺寸
       if (streamFrame.value && streamFrame.value.parentElement) {
-        const container = streamFrame.value.parentElement;
-        container.style.width = `${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px`;
-        container.style.height = `${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px`;
-        container.style.minHeight = `${STREAM_WINDOW_CONFIG.MIN_HEIGHT}px`;
-        
-        // 直接设置iframe的style属性
-        streamFrame.value.style.cssText = `
-          width: ${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px !important;
-          height: ${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px !important;
-          min-height: ${STREAM_WINDOW_CONFIG.MIN_HEIGHT}px !important;
-          visibility: visible !important;
-          display: block !important;
-        `;
+        updateContainerSize(isLandscape.value);
         
         // 直接加载串流URL
         console.log('加载串流URL:', streamUrl.value);
@@ -138,6 +127,38 @@
         handleConnectionError('无法初始化连接界面');
       }
     });
+  };
+  
+  // 根据横竖屏状态调整容器尺寸
+  const updateContainerSize = (landscape) => {
+    if (!streamFrame.value || !streamFrame.value.parentElement) return;
+    
+    const container = streamFrame.value.parentElement;
+    let width, height;
+    
+    if (landscape) {
+      // 横屏模式：交换宽高，确保完全匹配config配置
+      width = STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT; // 990
+      height = STREAM_WINDOW_CONFIG.DEFAULT_WIDTH; // 480
+    } else {
+      // 竖屏模式：正常宽高，完全匹配config配置
+      width = STREAM_WINDOW_CONFIG.DEFAULT_WIDTH;  // 480
+      height = STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT; // 990
+    }
+    
+    console.log(`调整设备视图尺寸: ${width}x${height}, 横屏: ${landscape}`);
+    
+    // 设置容器尺寸，保持完整尺寸
+    container.style.width = `${width}px`;
+    container.style.height = `${height}px`;
+    
+    // 设置iframe尺寸，确保完全匹配容器尺寸
+    streamFrame.value.style.cssText = `
+      width: ${width}px !important;
+      height: ${height}px !important;
+      visibility: ${loading.value || error.value ? 'hidden' : 'visible'} !important;
+      display: block !important;
+    `;
   };
   
   // 设置连接超时定时器
@@ -297,12 +318,23 @@
         if (data.udid && data.udid.includes(props.deviceId)) {
           // 检查方向是否真的变化了，并实施防抖 (500ms)
           const now = Date.now();
-          if (data.orientation !== lastOrientationData.orientation || now - lastOrientationData.timestamp > 500) {
+          if (data.status !== lastOrientationData.orientation || now - lastOrientationData.timestamp > 500) {
             console.log(`设备 ${data.udid} 屏幕方向: ${data.status}, 旋转: ${data.rotation}度, 尺寸: ${data.width}x${data.height}`);
             
             // 记录本次方向信息
-            lastOrientationData.orientation = data.orientation;
+            lastOrientationData.orientation = data.status;
             lastOrientationData.timestamp = now;
+            
+            // 更新横屏状态
+            const newLandscapeState = data.status === 'landscape';
+            if (isLandscape.value !== newLandscapeState) {
+              isLandscape.value = newLandscapeState;
+              
+              // 在下一帧更新容器尺寸
+              nextTick(() => {
+                updateContainerSize(isLandscape.value);
+              });
+            }
             
             // 向父组件发送屏幕方向变化事件
             emit('orientation-change', {
@@ -356,12 +388,19 @@
   <style scoped>
   .device-stream-container {
     position: relative;
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');  /* 480px */
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
     display: flex;
     flex-direction: column;
     background: #000;
-    min-height: v-bind('STREAM_WINDOW_CONFIG.MIN_HEIGHT + "px"');
+    transition: all 0.3s ease;
+  }
+  
+  /* 横屏样式 */
+  .device-stream-container.landscape {
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
+    transform: rotate(0deg); /* 确保容器本身不旋转 */
   }
   
   .device-stream-loading,
@@ -415,12 +454,18 @@
   
   .device-stream-frame {
     flex: 1;
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
-    min-height: v-bind('STREAM_WINDOW_CONFIG.MIN_HEIGHT + "px"');
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
     border: none;
     background: transparent;
     display: block;
+    transition: all 0.3s ease;
+  }
+  
+  /* 横屏模式下的iframe */
+  .landscape .device-stream-frame {
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
   }
   
   /* 修改 wscrcpy 中的样式 */

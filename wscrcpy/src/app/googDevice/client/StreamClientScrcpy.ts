@@ -63,7 +63,7 @@ export class StreamClientScrcpy
     private lastOrientationInfo = {
         rotation: -1,
         status: '',
-        timestamp: 0
+        timestamp: 0,
     };
 
     public static registerPlayer(playerClass: PlayerClass): void {
@@ -205,43 +205,47 @@ export class StreamClientScrcpy
         }
         const { videoSettings, screenInfo } = info;
         this.player.setDisplayInfo(info.displayInfo);
-        
+
         // 发送屏幕方向状态通知到父窗口
         if (screenInfo) {
             const { deviceRotation, videoSize } = screenInfo;
             const { width, height } = videoSize;
             const isLandscape = width > height || deviceRotation === 1 || deviceRotation === 3;
             const status = isLandscape ? 'landscape' : 'portrait';
-            
+
             // 检查方向是否真的变化了，或最后一次发送超过1秒
             const now = Date.now();
-            if (deviceRotation !== this.lastOrientationInfo.rotation || 
-                status !== this.lastOrientationInfo.status || 
-                now - this.lastOrientationInfo.timestamp > 1000) {
-                
+            if (
+                deviceRotation !== this.lastOrientationInfo.rotation ||
+                status !== this.lastOrientationInfo.status ||
+                now - this.lastOrientationInfo.timestamp > 1000
+            ) {
                 try {
-                    window.parent.postMessage({
-                        type: 'screen-orientation',
-                        status: status,
-                        rotation: deviceRotation,
-                        width: width,
-                        height: height,
-                        udid: this.params.udid,
-                    }, '*');
+                    window.parent.postMessage(
+                        {
+                            type: 'screen-orientation',
+                            status: status,
+                            rotation: deviceRotation,
+                            width: width,
+                            height: height,
+                            udid: this.params.udid,
+                        },
+                        '*',
+                    );
                     console.log('[StreamClientScrcpy] Sent screen orientation:', status, 'rotation:', deviceRotation);
-                    
+
                     // 更新最后发送的方向信息
                     this.lastOrientationInfo = {
                         rotation: deviceRotation,
                         status: status,
-                        timestamp: now
+                        timestamp: now,
                     };
                 } catch (error) {
                     console.error('[StreamClientScrcpy] Failed to send orientation message to parent:', error);
                 }
             }
         }
-        
+
         if (typeof this.fitToScreen !== 'boolean') {
             this.fitToScreen = this.player.getFitToScreenStatus();
         }
@@ -298,7 +302,7 @@ export class StreamClientScrcpy
         this.filePushHandler = undefined;
         this.touchHandler?.release();
         this.touchHandler = undefined;
-        
+
         // 从DOM中移除控制按钮
         if (this.controlButtons && this.controlButtons.parentElement) {
             this.controlButtons.parentElement.removeChild(this.controlButtons);
@@ -308,7 +312,7 @@ export class StreamClientScrcpy
     public startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): void {
         // 总是强制设置fitToScreen为true
         fitToScreen = true;
-        
+
         if (!udid) {
             throw Error(`Invalid udid value: "${udid}"`);
         }
@@ -340,7 +344,7 @@ export class StreamClientScrcpy
 
         const deviceView = document.createElement('div');
         deviceView.className = 'device-view';
-        
+
         const stop = (ev?: string | Event) => {
             if (ev && ev instanceof Event && ev.type === 'error') {
                 console.error(TAG, ev);
@@ -365,26 +369,26 @@ export class StreamClientScrcpy
         googMoreBox.setOnStop(stop);
         const googToolBox = GoogToolBox.createToolBox(udid, player, this, moreBox);
         this.controlButtons = googToolBox.getHolderElement();
-        
+
         const video = document.createElement('div');
         video.className = 'video';
-        
+
         // 先添加视频容器，后添加控制按钮（控制按钮在CSS中设置为固定在底部）
         deviceView.appendChild(video);
         deviceView.appendChild(moreBox);
         document.body.appendChild(this.controlButtons); // 直接添加到body，使用固定定位
-        
+
         player.setParent(video);
         player.pause();
 
         document.body.appendChild(deviceView);
-        
+
         // 总是使用fitToScreen
         const newBounds = this.getMaxSize();
         if (newBounds) {
             videoSettings = StreamClientScrcpy.createVideoSettingsWithBounds(videoSettings, newBounds);
         }
-        
+
         this.applyNewVideoSettings(videoSettings, false);
         const element = player.getTouchableElement();
         const logger = new DragAndPushLogger(element);
