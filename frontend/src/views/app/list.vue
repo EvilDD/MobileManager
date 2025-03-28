@@ -115,24 +115,65 @@
     </el-dialog>
 
     <!-- 上传APK对话框 -->
-    <el-dialog v-model="uploadDialogVisible" title="上传APK文件" width="500px">
-      <el-upload
-        class="upload-demo"
-        drag
-        action="#"
-        :auto-upload="false"
-        :on-change="handleFileChange"
-        :file-list="fileList"
-        accept=".apk"
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处或 <em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip">只能上传APK文件</div>
+    <el-dialog v-model="uploadDialogVisible" title="上传APK文件" width="600px">
+      <el-form ref="uploadFormRef" :model="uploadForm" label-width="100px" :rules="uploadFormRules">
+        <!-- APK文件上传 -->
+        <el-form-item label="APK文件" prop="file">
+          <el-upload
+            class="upload-demo"
+            drag
+            action="#"
+            :auto-upload="false"
+            :on-change="handleFileChange"
+            :file-list="fileList"
+            accept=".apk"
+          >
+            <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+            <div class="el-upload__text">
+              拖拽文件到此处或 <em>点击上传</em>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip">只能上传APK文件</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+
+        <!-- 文件信息显示 -->
+        <template v-if="fileList.length > 0">
+          <div class="file-info">
+            <p><strong>文件名：</strong>{{ fileList[0].name }}</p>
+            <p><strong>大小：</strong>{{ formatSize(fileList[0].size || 0) }}</p>
+          </div>
+          
+          <!-- 上传进度条 -->
+          <el-progress 
+            v-if="uploading" 
+            :percentage="uploadProgress" 
+            :status="uploadProgress === 100 ? 'success' : ''"
+          />
         </template>
-      </el-upload>
+
+        <!-- 应用信息表单 -->
+        <template v-if="fileList.length > 0">
+          <el-divider>应用信息</el-divider>
+          <el-form-item label="应用名称" prop="name">
+            <el-input v-model="uploadForm.name" placeholder="请输入应用名称" />
+          </el-form-item>
+          <el-form-item label="包名" prop="packageName">
+            <el-input v-model="uploadForm.packageName" placeholder="请输入包名" />
+          </el-form-item>
+          <el-form-item label="版本" prop="version">
+            <el-input v-model="uploadForm.version" placeholder="请输入版本号" />
+          </el-form-item>
+          <el-form-item label="应用类型" prop="appType">
+            <el-select v-model="uploadForm.appType" placeholder="请选择应用类型" style="width: 100%">
+              <el-option :label="AppTypeSystem" :value="AppTypeSystem" />
+              <el-option :label="AppTypeUser" :value="AppTypeUser" />
+              <el-option :label="AppTypeSettings" :value="AppTypeSettings" />
+            </el-select>
+          </el-form-item>
+        </template>
+      </el-form>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="cancelUpload">取消</el-button>
@@ -249,6 +290,28 @@ const appFormRules = {
   appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }],
   apkPath: [{ required: true, message: '请上传APK文件', trigger: 'blur' }]
 };
+
+// 上传表单数据
+const uploadFormRef = ref<FormInstance>();
+const uploadForm = ref({
+  name: '',
+  packageName: '',
+  version: '',
+  appType: AppTypeUser,
+  file: null as File | null
+});
+
+// 上传表单校验规则
+const uploadFormRules = {
+  name: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
+  packageName: [{ required: true, message: '请输入包名', trigger: 'blur' }],
+  version: [{ required: true, message: '请输入版本号', trigger: 'blur' }],
+  appType: [{ required: true, message: '请选择应用类型', trigger: 'change' }],
+  file: [{ required: true, message: '请选择APK文件', trigger: 'change' }]
+};
+
+// 上传进度
+const uploadProgress = ref(0);
 
 // 设备对话框标题
 const getDeviceDialogTitle = computed(() => {
@@ -393,53 +456,93 @@ const openUploadDialog = (isForApp = false) => {
 // 处理文件变化
 const handleFileChange = (file: UploadUserFile) => {
   fileList.value = [file];
+  
+  // 从文件名提取建议的应用名称
+  const fileName = file.name;
+  const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+  
+  // 更新表单数据
+  uploadForm.value = {
+    name: nameWithoutExt,
+    packageName: 'com.example.' + nameWithoutExt.toLowerCase().replace(/\s+/g, ''),
+    version: '1.0.0',
+    appType: AppTypeUser,
+    file: file.raw || null
+  };
 };
 
 // 取消上传
 const cancelUpload = () => {
   fileList.value = [];
+  uploadForm.value = {
+    name: '',
+    packageName: '',
+    version: '',
+    appType: AppTypeUser,
+    file: null
+  };
+  uploadProgress.value = 0;
   uploadDialogVisible.value = false;
 };
 
 // 提交上传
 const submitUpload = () => {
-  if (fileList.value.length === 0) {
-    ElMessage.warning('请选择要上传的APK文件');
-    return;
-  }
-
-  const rawFile = fileList.value[0].raw;
-  if (!rawFile) {
-    ElMessage.error('获取文件失败');
-    return;
-  }
-
-  console.log('准备上传文件:', rawFile.name, '类型:', rawFile.type, '大小:', rawFile.size);
+  if (!uploadFormRef.value) return;
   
-  uploading.value = true;
-  uploadApk(rawFile).then(res => {
-    if (res.code === 0) {
-      ElMessage.success('上传成功');
-      
-      // 如果是为应用表单上传，则设置路径
-      if (uploadForApp.value) {
-        appForm.value.apkPath = res.data.filePath;
-        appForm.value.size = res.data.fileSize;
-        uploadDialogVisible.value = false;
-      } else {
-        uploadDialogVisible.value = false;
+  uploadFormRef.value.validate((valid) => {
+    if (valid) {
+      if (fileList.value.length === 0 || !uploadForm.value.file) {
+        ElMessage.warning('请选择要上传的APK文件');
+        return;
       }
-      
-      // 刷新应用列表
-      fetchAppList();
-    } else {
-      ElMessage.error(res.message || '上传失败');
+
+      uploading.value = true;
+      uploadProgress.value = 0;
+
+      // 创建 FormData
+      const formData = new FormData();
+      formData.append('file', uploadForm.value.file);
+      formData.append('name', uploadForm.value.name);
+      formData.append('packageName', uploadForm.value.packageName);
+      formData.append('version', uploadForm.value.version);
+      formData.append('appType', uploadForm.value.appType);
+
+      // 使用 XMLHttpRequest 来获取上传进度
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          uploadProgress.value = Math.round((event.loaded * 100) / event.total);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.code === 0) {
+              ElMessage.success('上传成功');
+              uploadDialogVisible.value = false;
+              fetchAppList();
+            } else {
+              ElMessage.error(res.message || '上传失败');
+            }
+          } catch (err) {
+            ElMessage.error('解析响应失败');
+          }
+        } else {
+          ElMessage.error('上传失败');
+        }
+        uploading.value = false;
+      };
+
+      xhr.onerror = () => {
+        ElMessage.error('上传出错');
+        uploading.value = false;
+      };
+
+      xhr.open('POST', '/api/apps/upload', true);
+      xhr.send(formData);
     }
-  }).catch(err => {
-    console.error('上传出错:', err);
-    ElMessage.error('上传出错');
-  }).finally(() => {
-    uploading.value = false;
   });
 };
 
@@ -600,5 +703,28 @@ const submitDeviceAction = () => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.file-info {
+  width: 400px;
+  margin: 16px auto;
+  padding: 16px 24px;
+  background-color: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.file-info p {
+  display: flex;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.file-info strong {
+  width: 80px;
+  color: var(--el-text-color-secondary);
+  text-align: right;
+  padding-right: 12px;
 }
 </style> 
