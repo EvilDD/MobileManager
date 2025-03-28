@@ -11,6 +11,7 @@ import (
 	"github.com/swaggo/swag"
 
 	_ "backend/docs"
+	"backend/internal/controller/app"
 	"backend/internal/controller/device"
 	groupctl "backend/internal/controller/group"
 	"backend/internal/controller/hello"
@@ -25,6 +26,10 @@ var (
 		Brief: "start http server",
 		Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
 			s := g.Server()
+
+			// 设置服务器配置参数
+			s.SetMaxHeaderBytes(10 * 1024 * 1024)     // 10MB的请求头
+			s.SetClientMaxBodySize(500 * 1024 * 1024) // 500MB的请求体大小限制
 
 			// 添加CORS中间件
 			s.Use(ghttp.MiddlewareCORS)
@@ -56,6 +61,7 @@ var (
 					groupctl.NewV1(),
 					scrcpy.NewV1(),
 					screenshot.NewV1(),
+					app.NewV1(),
 				)
 			})
 

@@ -188,6 +188,29 @@ class PureHttp {
       ...axiosConfig
     } as PureHttpRequestConfig;
 
+    // 检查是否是FormData对象，如果是则删除默认的Content-Type，让浏览器自动设置正确的boundary
+    if (config.data instanceof FormData) {
+      // 删除默认的Content-Type，让浏览器自动设置为multipart/form-data并添加boundary
+      if (config.headers) {
+        delete config.headers['Content-Type'];
+      }
+      
+      // 确保请求头中不会再添加Content-Type
+      if (!config.headers) {
+        config.headers = {};
+      }
+      // 显式设置为undefined以确保axios不会添加默认的Content-Type
+      config.headers['Content-Type'] = undefined;
+      
+      console.log('检测到FormData对象，已移除Content-Type头以允许正确的文件上传');
+      console.log('FormData内容:', Array.from((config.data as any).entries()).map(([key, value]: [string, any]) => {
+        if (value instanceof File) {
+          return `${key}: File(${value.name}, ${value.type}, ${value.size}字节)`;
+        }
+        return `${key}: ${value}`;
+      }));
+    }
+
     // 单独处理自定义请求/响应回调
     return new Promise((resolve, reject) => {
       PureHttp.axiosInstance

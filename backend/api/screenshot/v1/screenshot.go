@@ -6,7 +6,7 @@ import (
 
 // ScreenshotReq 截图请求
 type ScreenshotReq struct {
-	g.Meta   `path:"/screenshot/capture" tags:"截图管理" method:"post" summary:"批量设备截图"`
+	g.Meta   `path:"/screenshot/capture" tags:"截图管理" method:"post" summary:"设备截图"`
 	DeviceId string `json:"deviceId" v:"required#设备ID不能为空" dc:"设备ID"`
 	Quality  int    `json:"quality" v:"between:1,100#图片质量必须在1-100之间" dc:"图片质量(1-100)" d:"80"`
 }

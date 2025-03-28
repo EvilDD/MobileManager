@@ -1,0 +1,8 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+frontend/dist/
+frontend/node_modules/
+frontend/.gitignore
+frontend/.git/
+wscrcpy/node_modules/
+wscrcpy/dist/
+wscrcpy/build/

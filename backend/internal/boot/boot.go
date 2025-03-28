@@ -1,31 +1,34 @@
 package boot
 
 import (
+	"context"
+
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/gfile"
 )
 
-// 初始化函数
-func init() {
-	ctx := gctx.New()
-	// 确保数据目录存在
-	if !gfile.Exists("./data") {
-		err := gfile.Mkdir("./data")
-		if err != nil {
-			g.Log().Fatal(ctx, "Failed to create data directory:", err)
-		}
-	}
-
-	// 初始化数据表
-	err := initTables(ctx)
-	if err != nil {
-		g.Log().Fatal(ctx, "Failed to initialize database tables:", err)
-	}
+// 初始化应用表
+func initAppTable(ctx context.Context) error {
+	_, err := g.DB().Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS "app" (
+			"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+			"name" VARCHAR(255) NOT NULL,
+			"package_name" VARCHAR(255) NOT NULL,
+			"version" VARCHAR(50) NOT NULL,
+			"size" INTEGER NOT NULL,
+			"app_type" VARCHAR(50) NOT NULL,
+			"apk_path" VARCHAR(255) NOT NULL,
+			"created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE("package_name")
+		)
+	`)
+	return err
 }
 
 // 初始化数据表
-func initTables(ctx gctx.Ctx) error {
+func initTables(ctx context.Context) error {
 	// 创建分组表
 	_, err := g.DB().Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS "group" (
@@ -53,5 +56,32 @@ func initTables(ctx gctx.Ctx) error {
 			FOREIGN KEY ("group_id") REFERENCES "group" ("id")
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 创建应用表
+	if err := initAppTable(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 初始化函数
+func init() {
+	ctx := gctx.New()
+	// 确保数据目录存在
+	if !gfile.Exists("./data") {
+		err := gfile.Mkdir("./data")
+		if err != nil {
+			g.Log().Fatal(ctx, "Failed to create data directory:", err)
+		}
+	}
+
+	// 初始化数据表
+	err := initTables(ctx)
+	if err != nil {
+		g.Log().Fatal(ctx, "Failed to initialize database tables:", err)
+	}
 }
