@@ -7,6 +7,7 @@ import (
 	"backend/internal/dao"
 	"backend/internal/model/entity"
 
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -104,5 +105,26 @@ func (s *groupService) Delete(ctx context.Context, req *v1.DeleteReq) error {
 	}
 
 	_, err = dao.Group.Ctx(ctx).Where("id", req.Id).Delete()
+	return err
+}
+
+// BatchUpdateDevicesGroup 批量修改设备分组
+func (s *groupService) BatchUpdateDevicesGroup(ctx context.Context, req *v1.BatchUpdateDevicesGroupReq) error {
+	// 检查分组是否存在
+	count, err := dao.Group.Ctx(ctx).Where("id", req.GroupId).Count()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return gerror.New("分组不存在")
+	}
+
+	// 批量更新设备的分组ID
+	_, err = dao.Device.Ctx(ctx).
+		WhereIn("id", req.DeviceIds).
+		Data(g.Map{
+			"group_id": req.GroupId,
+		}).
+		Update()
 	return err
 }

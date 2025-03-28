@@ -35,3 +35,11 @@ func (c *ControllerV1) Delete(ctx context.Context, req *v1.DeleteReq) (res *v1.D
 	}
 	return &v1.DeleteRes{}, nil
 }
+
+// BatchUpdateDevicesGroup 批量修改设备分组
+func (c *ControllerV1) BatchUpdateDevicesGroup(ctx context.Context, req *v1.BatchUpdateDevicesGroupReq) (res *v1.BatchUpdateDevicesGroupRes, err error) {
+	if err = service.GroupService.BatchUpdateDevicesGroup(ctx, req); err != nil {
+		return nil, err
+	}
+	return &v1.BatchUpdateDevicesGroupRes{}, nil
+}

@@ -33,6 +33,14 @@
               </el-select>
             </el-col>
             <el-col :span="12" class="text-right">
+              <el-button
+                type="primary"
+                :disabled="selectedDevices.length === 0"
+                @click="handleBatchUpdateGroup"
+                class="mr-2"
+              >
+                批量修改分组
+              </el-button>
               <el-button type="primary" @click="handleAdd">
                 <el-icon><Plus /></el-icon>新增设备
               </el-button>
@@ -41,7 +49,14 @@
         </div>
       </template>
 
-      <el-table :data="tableData" v-loading="loading" border style="width: 100%">
+      <el-table
+        :data="tableData"
+        v-loading="loading"
+        border
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="55" />
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="设备名称" />
         <el-table-column prop="deviceId" label="设备ID" />
@@ -127,6 +142,41 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 批量修改分组对话框 -->
+    <el-dialog
+      title="批量修改分组"
+      v-model="batchUpdateDialogVisible"
+      width="500px"
+      destroy-on-close
+    >
+      <el-form
+        ref="batchFormRef"
+        :model="batchFormData"
+        :rules="batchRules"
+        label-width="100px"
+        style="max-width: 460px"
+      >
+        <el-form-item label="目标分组" prop="groupId">
+          <el-select v-model="batchFormData.groupId" placeholder="请选择分组" style="width: 100%">
+            <el-option
+              v-for="item in groupOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="batchUpdateDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleBatchSubmit">
+            确定
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -135,6 +185,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { getDeviceList, saveDevice, updateDevice, deleteDevice } from '@/api/device'
+import { batchUpdateDevicesGroup } from '@/api/group'
 import type { Device } from '@/api/device'
 import { Search, Plus } from '@element-plus/icons-vue'
 
@@ -163,6 +214,18 @@ const rules: FormRules = {
   name: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
   deviceId: [{ required: true, message: '请输入设备ID', trigger: 'blur' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }]
+}
+
+// 批量更新相关
+const selectedDevices = ref<Device[]>([])
+const batchUpdateDialogVisible = ref(false)
+const batchFormRef = ref<FormInstance>()
+const batchFormData = ref({
+  groupId: undefined as number | undefined
+})
+
+const batchRules: FormRules = {
+  groupId: [{ required: true, message: '请选择目标分组', trigger: 'change' }]
 }
 
 // 获取设备列表
@@ -304,6 +367,44 @@ const handleSubmit = async () => {
       } catch (error) {
         console.error('保存设备失败:', error)
         ElMessage.error('保存设备失败')
+      }
+    }
+  })
+}
+
+// 选择设备变化时的处理函数
+const handleSelectionChange = (selection: Device[]) => {
+  selectedDevices.value = selection
+}
+
+// 打开批量更新分组对话框
+const handleBatchUpdateGroup = () => {
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择要修改的设备')
+    return
+  }
+  batchFormData.value.groupId = undefined
+  batchUpdateDialogVisible.value = true
+}
+
+// 提交批量更新
+const handleBatchSubmit = async () => {
+  if (!batchFormRef.value) return
+  
+  await batchFormRef.value.validate(async (valid) => {
+    if (valid && batchFormData.value.groupId !== undefined) {
+      try {
+        await batchUpdateDevicesGroup({
+          groupId: batchFormData.value.groupId,
+          deviceIds: selectedDevices.value.map(device => device.id)
+        })
+        
+        ElMessage.success('批量修改成功')
+        batchUpdateDialogVisible.value = false
+        fetchData() // 刷新列表
+      } catch (error) {
+        console.error('批量修改失败:', error)
+        ElMessage.error('批量修改失败')
       }
     }
   })

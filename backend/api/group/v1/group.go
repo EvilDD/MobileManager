@@ -42,6 +42,14 @@ type DeleteReq struct {
 
 type DeleteRes struct{}
 
+type BatchUpdateDevicesGroupReq struct {
+	g.Meta    `path:"/groups/batch-update-devices" tags:"分组管理" method:"put" summary:"批量修改设备分组"`
+	GroupId   int64   `json:"groupId" v:"required#请选择目标分组" dc:"目标分组ID"`
+	DeviceIds []int64 `json:"deviceIds" v:"required#请选择要修改的设备" dc:"设备ID列表"`
+}
+
+type BatchUpdateDevicesGroupRes struct{}
+
 type Group struct {
 	Id          int64  `json:"id"`
 	Name        string `json:"name"`

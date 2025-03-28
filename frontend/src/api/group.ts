@@ -41,6 +41,11 @@ export interface GroupDeleteReq {
   id: number;
 }
 
+export interface BatchUpdateDevicesGroupReq {
+  groupId: number;
+  deviceIds: number[];
+}
+
 // 获取分组列表
 export function getGroupList(params: GroupListReq) {
   return http.request<GroupListRes>("get", "/api/groups/list", { params });
@@ -59,4 +64,9 @@ export function updateGroup(data: GroupUpdateReq) {
 // 删除分组
 export function deleteGroup(data: GroupDeleteReq) {
   return http.request("delete", "/api/groups/delete", { data });
+}
+
+// 批量修改设备分组
+export function batchUpdateDevicesGroup(data: BatchUpdateDevicesGroupReq) {
+  return http.request("put", "/api/groups/batch-update-devices", { data });
 }
