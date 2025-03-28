@@ -6,6 +6,7 @@ import {
   createGroup,
   updateGroup,
   deleteGroup,
+  batchUpdateDevicesGroup,
   type GroupItem
 } from "@/api/group";
 import {
@@ -24,7 +25,11 @@ import {
   ArrowDown,
   Search,
   Delete,
-  Edit
+  Edit,
+  More,
+  VideoPlay,
+  Switch,
+  ArrowRight
 } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 
@@ -390,6 +395,79 @@ const handleEditDialogClose = () => {
   };
 };
 
+// 批量选择相关
+const selectedDevices = ref<string[]>([]);
+const isAllSelected = computed(() => {
+  return filteredDevices.value.length > 0 && selectedDevices.value.length === filteredDevices.value.length;
+});
+
+// 选择设备
+const handleSelect = (device: Device) => {
+  const index = selectedDevices.value.findIndex(id => id === device.deviceId);
+  if (index === -1) {
+    selectedDevices.value.push(device.deviceId);
+  } else {
+    selectedDevices.value.splice(index, 1);
+  }
+};
+
+// 全选/取消全选
+const handleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedDevices.value = [];
+  } else {
+    selectedDevices.value = filteredDevices.value.map(device => device.deviceId);
+  }
+};
+
+// 批量切换分组
+const handleBatchChangeGroup = async (groupId: number) => {
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择设备');
+    return;
+  }
+
+  try {
+    const selectedDeviceObjects = devices.value.filter(device => 
+      selectedDevices.value.includes(device.deviceId)
+    );
+    
+    await batchUpdateDevicesGroup({
+      groupId,
+      deviceIds: selectedDeviceObjects.map(device => device.id)
+    });
+    ElMessage.success('批量修改分组成功');
+    getGroups(); // 刷新分组列表
+    getDevices(); // 刷新设备列表
+    selectedDevices.value = []; // 清空选择
+  } catch (error) {
+    console.error('批量修改分组失败:', error);
+    ElMessage.error('批量修改分组失败');
+  }
+};
+
+// 显示更多操作菜单
+const showMoreActions = ref<Record<string, boolean>>({});
+const toggleMoreActions = (deviceId: string) => {
+  showMoreActions.value[deviceId] = !showMoreActions.value[deviceId];
+};
+
+// 移动分组对话框相关
+const showMoveGroupDialog = ref(false);
+const selectedGroupId = ref<number>(0);
+
+// 确认移动分组
+const handleConfirmMoveGroup = async () => {
+  if (!selectedGroupId.value) {
+    ElMessage.warning('请选择目标分组');
+    return;
+  }
+  
+  await handleBatchChangeGroup(selectedGroupId.value);
+  showMoveGroupDialog.value = false;
+  selectedGroupId.value = 0;
+};
+
 onMounted(() => {
   getGroups();
   getDevices();
@@ -488,7 +566,23 @@ onMounted(() => {
     <div class="content-area">
       <!-- 顶部操作栏 -->
       <div class="top-toolbar">
-        <div class="screenshot-controls">
+        <div class="left-controls">
+          <el-checkbox
+            v-model="isAllSelected"
+            @change="handleSelectAll"
+            :indeterminate="selectedDevices.length > 0 && !isAllSelected"
+          >
+            全选
+          </el-checkbox>
+
+          <el-button
+            type="primary"
+            :disabled="selectedDevices.length === 0"
+            @click="() => (showMoveGroupDialog = true)"
+          >
+            移动分组
+          </el-button>
+
           <el-dropdown @command="changeRefreshInterval" trigger="click">
             <el-button type="default" size="small">
               {{ autoRefresh ? (refreshInterval / 1000 + '秒刷新') : '永不刷新' }} <el-icon><ArrowDown /></el-icon>
@@ -505,28 +599,31 @@ onMounted(() => {
           </el-dropdown>
         </div>
         
-        <el-input
-          v-model="searchInput"
-          placeholder="搜索云手机"
-          clearable
-          class="search-input"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-dropdown @command="changeStatusFilter" trigger="click">
-          <el-button type="default" size="small">
-            {{ statusFilter === 'all' ? '全部' : statusFilter === 'online' ? '在线' : '离线' }} <el-icon><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="all">全部</el-dropdown-item>
-              <el-dropdown-item command="online">在线</el-dropdown-item>
-              <el-dropdown-item command="offline">离线</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <div class="right-controls">
+          <el-input
+            v-model="searchInput"
+            placeholder="搜索云手机"
+            clearable
+            class="search-input"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          
+          <el-dropdown @command="changeStatusFilter" trigger="click">
+            <el-button type="default" size="small">
+              {{ statusFilter === 'all' ? '全部' : statusFilter === 'online' ? '在线' : '离线' }} <el-icon><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="all">全部</el-dropdown-item>
+                <el-dropdown-item command="online">在线</el-dropdown-item>
+                <el-dropdown-item command="offline">离线</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
 
       <!-- 云手机列表 -->
@@ -537,12 +634,17 @@ onMounted(() => {
           class="phone-card"
         >
           <div class="phone-header">
-            <div class="device-id">{{ device.deviceId }}</div>
-            <div
-              class="phone-status"
-              :class="{ online: device.status === 'online' }"
-            />
+            <!-- 选择框和设备ID布局调整 -->
+            <div class="header-left">
+              <el-checkbox
+                :model-value="selectedDevices.includes(device.deviceId)"
+                @change="(val: boolean) => val ? selectedDevices.push(device.deviceId) : selectedDevices = selectedDevices.filter(id => id !== device.deviceId)"
+              />
+              <div class="device-id">{{ device.deviceId }}</div>
+            </div>
+            <div class="phone-status" :class="{ online: device.status === 'online' }" />
           </div>
+
           <div class="phone-preview">
             <device-screenshot
               v-if="device.status === 'online'"
@@ -562,16 +664,27 @@ onMounted(() => {
               <div class="offline-text">设备离线</div>
             </div>
           </div>
-          <div class="phone-actions">
-            <el-button type="primary" size="small" class="action-button" @click="connectToPhone(device)">
-              连接
-            </el-button>
-            <el-button type="warning" size="small" class="action-button" @click="restartPhone(device, $event)">
-              重启
-            </el-button>
-            <el-button type="danger" size="small" class="action-button" @click="shutdownPhone(device, $event)">
-              关机
-            </el-button>
+
+          <!-- 操作按钮改为右下角的更多操作按钮 -->
+          <div class="more-actions">
+            <el-dropdown trigger="click">
+              <el-button type="primary" circle size="small">
+                <el-icon><More /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="connectToPhone(device)">
+                    <el-icon><VideoPlay /></el-icon>连接
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="restartPhone(device, $event)">
+                    <el-icon><Refresh /></el-icon>重启
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="shutdownPhone(device, $event)">
+                    <el-icon><Switch /></el-icon>关机
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
 
@@ -646,6 +759,31 @@ onMounted(() => {
       :server-url="streamServerUrl"
       @closed="selectedDevice = null"
     />
+
+    <!-- 移动分组对话框 -->
+    <el-dialog
+      v-model="showMoveGroupDialog"
+      title="移动到分组"
+      width="30%"
+      :close-on-click-modal="false"
+    >
+      <el-radio-group v-model="selectedGroupId" class="group-radio-list">
+        <el-radio
+          v-for="group in filteredGroups"
+          :key="group.id"
+          :label="group.id"
+          class="group-radio-item"
+        >
+          {{ group.name }}
+        </el-radio>
+      </el-radio-group>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showMoveGroupDialog = false">取消</el-button>
+          <el-button type="primary" @click="handleConfirmMoveGroup">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -787,13 +925,19 @@ onMounted(() => {
 .top-toolbar {
   margin-bottom: 20px;
   display: flex;
-  gap: 12px;
+  justify-content: space-between;
   align-items: center;
   padding-bottom: 16px;
   border-bottom: 1px solid #f0f0f0;
 }
 
-.screenshot-controls {
+.left-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.right-controls {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -862,6 +1006,14 @@ onMounted(() => {
   justify-content: space-between;
   border-bottom: 1px solid #f0f0f0;
   background-color: #f9f9f9;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .device-id {
@@ -978,5 +1130,42 @@ onMounted(() => {
   text-align: center;
   padding: 30px;
   color: #909399;
+}
+
+/* 更多操作按钮样式 */
+.more-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+}
+
+.more-actions .el-button {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s;
+}
+
+.more-actions .el-button:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* 移动分组对话框样式 */
+.group-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.group-radio-item {
+  margin-right: 0;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.group-radio-item:hover {
+  background-color: #f5f7fa;
 }
 </style>
