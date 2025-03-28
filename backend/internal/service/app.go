@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -10,12 +11,11 @@ import (
 	"backend/internal/dao"
 	"backend/internal/model"
 	"backend/utility/adb"
+	"backend/utility/apk"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gfile"
-	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/grand"
 )
 
@@ -231,177 +231,123 @@ func (s *appService) Start(ctx context.Context, req *v1.StartReq) error {
 func (s *appService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.UploadRes, err error) {
 	res = &v1.UploadRes{}
 
-	// 详细日志记录
-	g.Log().Debug(ctx, "Service层开始处理上传请求")
-
-	// 从HTTP请求中直接获取文件
-	r := g.RequestFromCtx(ctx)
-	if r == nil {
-		g.Log().Error(ctx, "获取HTTP请求对象失败")
-		return nil, gerror.New("无法处理上传请求")
-	}
-
-	// 确保请求方法是POST
-	g.Log().Debug(ctx, "请求方法:", r.Method)
-	if r.Method != "POST" {
-		g.Log().Error(ctx, "请求方法不正确:", r.Method)
-		return nil, gerror.New("只支持POST方法上传文件")
-	}
-
-	// 记录Content-Type，用于调试
-	contentType := r.Header.Get("Content-Type")
-	g.Log().Debug(ctx, "请求Content-Type:", contentType)
-
-	// 改进：更灵活地处理Content-Type
-	var file *ghttp.UploadFile
-
-	// 处理不同的Content-Type
-	if strings.Contains(contentType, "multipart/form-data") {
-		// 标准的multipart/form-data处理
-		g.Log().Debug(ctx, "处理multipart/form-data请求")
-		file = r.GetUploadFile("file")
-	} else if strings.Contains(contentType, "application/json") {
-		// 尝试从JSON请求中解析文件信息
-		g.Log().Debug(ctx, "尝试从JSON请求中解析文件信息")
-
-		// 先打印完整的请求体便于调试
-		bodyContent := r.GetBodyString()
-		g.Log().Debug(ctx, "JSON请求体内容:", bodyContent)
-
-		// 查看请求的表单数据
-		formData := r.GetFormMap()
-		g.Log().Debug(ctx, "JSON请求表单数据:", formData)
-
-		// 尝试手动解析multipart表单
-		g.Log().Debug(ctx, "尝试手动解析multipart表单...")
-		if err := r.ParseMultipartForm(500 << 20); err != nil { // 500MB 最大内存
-			g.Log().Warning(ctx, "解析multipart表单失败:", err)
-		} else {
-			g.Log().Debug(ctx, "成功解析multipart表单")
-		}
-	} else {
-		// 其他类型的Content-Type
-		g.Log().Debug(ctx, "处理其他类型的Content-Type请求")
-	}
-
-	// 尝试获取上传的文件
+	file := req.File
 	if file == nil {
-		file = r.GetUploadFile("file")
+		return nil, gerror.New("请选择要上传的APK文件")
 	}
 
-	// 尝试从多种来源获取文件
-	if file == nil {
-		g.Log().Debug(ctx, "直接获取文件失败，尝试从表单中获取")
-
-		// 记录所有请求信息以便调试
-		g.Log().Debug(ctx, "请求体内容:", r.GetBodyString())
-		g.Log().Debug(ctx, "请求头:", r.Header)
-
-		// 记录请求表单数据
-		formData := r.GetFormMap()
-		g.Log().Debug(ctx, "表单数据:", formData)
-
-		// 如果有文件上传表单，尝试读取
-		if r.MultipartForm != nil && r.MultipartForm.File != nil {
-			g.Log().Debug(ctx, "找到表单文件字段数:", len(r.MultipartForm.File))
-
-			for name, fileHeaders := range r.MultipartForm.File {
-				g.Log().Debug(ctx, "表单字段:", name, "包含", len(fileHeaders), "个文件")
-				if len(fileHeaders) > 0 && fileHeaders[0] != nil {
-					// 尝试获取第一个文件
-					fileInfo := fileHeaders[0]
-					g.Log().Debug(ctx, "找到文件:", fileInfo.Filename, "大小:", fileInfo.Size)
-					tempFile := r.GetUploadFile(name)
-					if tempFile != nil {
-						file = tempFile
-						g.Log().Debug(ctx, "成功获取到上传文件:", tempFile.Filename)
-						break
-					}
-				}
-			}
-		}
-
-		// 如果还是没有找到文件，尝试获取所有可能的文件上传字段
-		if file == nil {
-			g.Log().Debug(ctx, "尝试查找所有可能的文件字段")
-			possibleFields := []string{"file", "apk", "uploadFile", "apkFile"}
-			for _, fieldName := range possibleFields {
-				tempFile := r.GetUploadFile(fieldName)
-				if tempFile != nil {
-					file = tempFile
-					g.Log().Debug(ctx, "在字段", fieldName, "中找到文件:", tempFile.Filename)
-					break
-				}
-			}
-		}
-
-		// 如果还是没有找到文件
-		if file == nil {
-			g.Log().Error(ctx, "未找到上传文件")
-			return nil, gerror.New("未找到上传文件")
-		}
-	}
-
-	g.Log().Debug(ctx, "成功获取到上传文件:", file.Filename)
-
-	// 检查文件扩展名
-	filename := file.Filename
-	if !strings.HasSuffix(strings.ToLower(filename), ".apk") {
-		g.Log().Error(ctx, "文件扩展名不正确:", filename)
+	// 检查文件类型
+	if !strings.HasSuffix(strings.ToLower(file.Filename), ".apk") {
 		return nil, gerror.New("只能上传APK文件")
 	}
 
-	// 确保保存目录存在
-	uploadDir := "resource/apk"
-	g.Log().Debug(ctx, "检查上传目录:", uploadDir)
-
-	if !gfile.Exists(uploadDir) {
-		g.Log().Debug(ctx, "上传目录不存在，准备创建")
-		if err = gfile.Mkdir(uploadDir); err != nil {
-			g.Log().Error(ctx, "创建目录失败:", err)
-			return nil, gerror.Newf("创建目录失败: %v", err)
+	// 生成存储路径
+	uploadPath := "resource/apk"
+	if !gfile.Exists(uploadPath) {
+		err = gfile.Mkdir(uploadPath)
+		if err != nil {
+			return nil, gerror.Newf("创建上传目录失败: %v", err)
 		}
-		g.Log().Debug(ctx, "成功创建上传目录")
 	}
 
-	// 生成唯一文件名，使用当前时间 + 随机数
-	now := time.Now().Format("20060102150405")
-	random := gconv.String(grand.Intn(10000))
-	uniqueFileName := now + "_" + random + ".apk"
-	savePath := gfile.Join(uploadDir, uniqueFileName)
+	// 生成唯一文件名
+	now := time.Now()
+	uniqueName := now.Format("20060102150405") + "_" + grand.S(8) + ".apk"
+	filePath := gfile.Join(uploadPath, uniqueName)
 
-	g.Log().Debug(ctx, "准备保存文件到:", savePath)
-
-	// 保存文件
-	newFilename, err := file.Save(savePath)
+	// 创建目标文件
+	dst, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		g.Log().Error(ctx, "保存文件失败:", err)
+		return nil, gerror.Newf("创建文件失败: %v", err)
+	}
+	defer dst.Close()
+
+	// 打开源文件
+	src, err := file.Open()
+	if err != nil {
+		return nil, gerror.Newf("打开上传文件失败: %v", err)
+	}
+	defer src.Close()
+
+	// 复制文件内容
+	written, err := io.Copy(dst, src)
+	if err != nil {
+		// 删除已上传的文件
+		_ = gfile.Remove(filePath)
 		return nil, gerror.Newf("保存文件失败: %v", err)
 	}
-	g.Log().Debug(ctx, "文件已保存，新文件名:", newFilename)
 
-	// 确保文件已成功保存
-	if !gfile.Exists(savePath) {
-		g.Log().Error(ctx, "保存文件后无法找到文件:", savePath)
-		return nil, gerror.New("文件保存失败，无法找到上传的文件")
+	// 确保写入的大小正确
+	if written == 0 {
+		// 删除空文件
+		_ = gfile.Remove(filePath)
+		return nil, gerror.New("保存的文件大小为0")
 	}
 
-	// 获取文件大小
-	fileInfo, err := os.Stat(savePath)
+	// 输出文件信息
+	g.Log().Debugf(ctx, "文件已保存: %s, 大小: %d 字节", filePath, written)
+
+	// 解析APK文件
+	apkInfo, err := apk.ParseAPK(filePath)
 	if err != nil {
-		g.Log().Error(ctx, "获取文件信息失败:", err)
-		// 如果获取文件信息失败，尝试删除文件
-		_ = gfile.Remove(savePath)
-		return nil, gerror.Newf("获取文件信息失败: %v", err)
+		// 输出错误详情
+		g.Log().Errorf(ctx, "解析APK文件失败: %v, 文件路径: %s", err, filePath)
+		// 删除已上传的文件
+		_ = gfile.Remove(filePath)
+		return nil, gerror.Newf("解析APK文件失败: %v", err)
 	}
-	fileSize := fileInfo.Size() / 1024 // KB
-	g.Log().Debug(ctx, "文件大小:", fileSize, "KB")
 
-	// 设置返回信息
-	res.FileName = filename
-	res.FileSize = fileSize
-	res.FilePath = savePath
+	// 输出解析结果
+	g.Log().Debugf(ctx, "APK解析结果: 应用名=%s, 包名=%s, 版本=%s",
+		apkInfo.ApplicationName, apkInfo.PackageName, apkInfo.VersionName)
 
-	g.Log().Debug(ctx, "文件上传成功，返回信息:", res)
-	return res, nil
+	// 如果解析结果为空，使用文件名作为默认值
+	if apkInfo.ApplicationName == "" {
+		apkInfo.ApplicationName = strings.TrimSuffix(file.Filename, ".apk")
+	}
+	if apkInfo.PackageName == "" {
+		apkInfo.PackageName = "com.example." + strings.ToLower(strings.ReplaceAll(apkInfo.ApplicationName, " ", ""))
+	}
+	if apkInfo.VersionName == "" {
+		apkInfo.VersionName = "1.0.0"
+	}
+
+	// 检查应用包名是否已存在
+	count, err := dao.App.Ctx(ctx).Where("package_name", apkInfo.PackageName).Count()
+	if err != nil {
+		// 删除已上传的文件
+		_ = gfile.Remove(filePath)
+		return nil, err
+	}
+	if count > 0 {
+		// 删除已上传的文件
+		_ = gfile.Remove(filePath)
+		return nil, gerror.New("应用包名已存在")
+	}
+
+	// 创建应用记录
+	appData := g.Map{
+		"name":         apkInfo.ApplicationName,
+		"package_name": apkInfo.PackageName,
+		"version":      apkInfo.VersionName,
+		"size":         written,
+		"app_type":     "用户应用",
+		"apk_path":     filePath,
+	}
+
+	// 输出即将插入的数据
+	g.Log().Debugf(ctx, "即将插入数据库的应用信息: %+v", appData)
+
+	_, err = dao.App.Ctx(ctx).Data(appData).Insert()
+	if err != nil {
+		// 删除已上传的文件
+		_ = gfile.Remove(filePath)
+		return nil, gerror.Newf("保存应用信息失败: %v", err)
+	}
+
+	res.FileName = file.Filename
+	res.FileSize = written
+	res.FilePath = filePath
+
+	return
 }

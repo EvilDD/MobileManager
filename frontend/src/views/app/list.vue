@@ -209,7 +209,6 @@ import {
   type App
 } from "@/api/app";
 import { getDeviceList, type Device } from "@/api/device";
-import { parseApk } from "@/utils/apkParser";
 
 // 应用类型常量
 const AppTypeSystem = "系统应用";
@@ -470,7 +469,7 @@ const submitUpload = async () => {
     const res = await uploadApk(file);
 
     if (res.code === 0) {
-      ElMessage.success('上传成功');
+      ElMessage.success('应用导入成功');
       if (uploadForApp.value) {
         appForm.value.apkPath = res.data.filePath;
         uploadForApp.value = false;
