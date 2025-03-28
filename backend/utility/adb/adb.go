@@ -1,9 +1,89 @@
 package adb
 
 import (
+	"bytes"
+	"fmt"
 	"os/exec"
 	"strings"
 )
+
+// ADB 工具类接口
+type IAdb interface {
+	// Connect 连接设备
+	Connect(deviceId string) error
+	// ExecuteCommand 执行 ADB 命令
+	ExecuteCommand(deviceId string, args ...string) (string, error)
+	// PullFile 从设备拉取文件
+	PullFile(deviceId string, devicePath string, localPath string) error
+	// RemoveDeviceFile 删除设备上的文件
+	RemoveDeviceFile(deviceId string, path string) error
+	// Screencap 设备截图
+	Screencap(deviceId string, savePath string) error
+}
+
+type adbService struct{}
+
+var defaultAdb IAdb
+
+func init() {
+	defaultAdb = &adbService{}
+}
+
+// Default 获取默认的 ADB 工具实例
+func Default() IAdb {
+	return defaultAdb
+}
+
+// Connect 连接设备
+func (s *adbService) Connect(deviceId string) error {
+	cmd := exec.Command("adb", "connect", deviceId)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("连接设备失败: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// ExecuteCommand 执行 ADB 命令
+func (s *adbService) ExecuteCommand(deviceId string, args ...string) (string, error) {
+	cmdArgs := append([]string{"-s", deviceId}, args...)
+	cmd := exec.Command("adb", cmdArgs...)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("执行ADB命令失败: %v", err)
+	}
+
+	return out.String(), nil
+}
+
+// PullFile 从设备拉取文件
+func (s *adbService) PullFile(deviceId string, devicePath string, localPath string) error {
+	_, err := s.ExecuteCommand(deviceId, "pull", devicePath, localPath)
+	if err != nil {
+		return fmt.Errorf("拉取文件失败: %v", err)
+	}
+	return nil
+}
+
+// RemoveDeviceFile 删除设备上的文件
+func (s *adbService) RemoveDeviceFile(deviceId string, path string) error {
+	_, err := s.ExecuteCommand(deviceId, "shell", "rm", path)
+	if err != nil {
+		return fmt.Errorf("删除设备文件失败: %v", err)
+	}
+	return nil
+}
+
+// Screencap 设备截图
+func (s *adbService) Screencap(deviceId string, savePath string) error {
+	_, err := s.ExecuteCommand(deviceId, "shell", "screencap", "-p", savePath)
+	if err != nil {
+		return fmt.Errorf("设备截图失败: %v", err)
+	}
+	return nil
+}
 
 // 执行ADB命令的基础函数
 func executeAdbCommand(args ...string) (string, error) {

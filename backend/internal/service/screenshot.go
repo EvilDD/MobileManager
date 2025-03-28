@@ -8,12 +8,12 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
 	v1 "backend/api/screenshot/v1"
+	"backend/utility/adb"
 )
 
 type IScreenshot interface {
@@ -35,7 +35,6 @@ func Screenshot() IScreenshot {
 
 type screenshotService struct{}
 
-// ... existing code ...
 func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) (res *v1.ScreenshotRes, err error) {
 	deviceId := req.DeviceId
 	res = &v1.ScreenshotRes{
@@ -45,50 +44,55 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		Error:     "",
 	}
 
+	// 获取 ADB 工具实例
+	adbTool := adb.Default()
+
+	// 1. 连接设备
+	if err = adbTool.Connect(deviceId); err != nil {
+		res.Error = fmt.Sprintf("连接设备失败: %v", err)
+		return
+	}
+
 	// 生成唯一的临时文件名
 	timestamp := time.Now().UnixNano()
 	tempFileName := fmt.Sprintf("screenshot_%s_%d.png", strings.Replace(deviceId, ":", "_", -1), timestamp)
 	deviceTempPath := fmt.Sprintf("/data/local/tmp/%s", tempFileName)
 
-	// 1. 在设备上执行截图命令
-	cmdScreencap := exec.Command("adb", "-s", deviceId, "shell", "screencap", "-p", deviceTempPath)
-	if err = cmdScreencap.Run(); err != nil {
+	// 2. 在设备上执行截图命令
+	if err = adbTool.Screencap(deviceId, deviceTempPath); err != nil {
 		res.Error = fmt.Sprintf("设备截图失败: %v", err)
 		return
 	}
 
-	// 2. 从设备中拉取截图文件
-	var buf bytes.Buffer
-	cmdPull := exec.Command("adb", "-s", deviceId, "pull", deviceTempPath)
-	cmdPull.Stdout = &buf
-	if err = cmdPull.Run(); err != nil {
+	// 3. 从设备中拉取截图文件
+	if err = adbTool.PullFile(deviceId, deviceTempPath, tempFileName); err != nil {
 		res.Error = fmt.Sprintf("拉取截图失败: %v", err)
 		// 清理设备上的临时文件
-		exec.Command("adb", "-s", deviceId, "shell", "rm", deviceTempPath).Run()
+		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		return
 	}
 
-	// 3. 读取本地文件
+	// 4. 读取本地文件
 	imgData, err := os.ReadFile(tempFileName)
 	if err != nil {
 		res.Error = fmt.Sprintf("读取截图文件失败: %v", err)
 		// 清理设备上和本地的临时文件
-		exec.Command("adb", "-s", deviceId, "shell", "rm", deviceTempPath).Run()
+		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return
 	}
 
-	// 4. 解码PNG图片
+	// 5. 解码PNG图片
 	img, err := png.Decode(bytes.NewReader(imgData))
 	if err != nil {
 		res.Error = fmt.Sprintf("解码PNG图片失败: %v", err)
 		// 清理临时文件
-		exec.Command("adb", "-s", deviceId, "shell", "rm", deviceTempPath).Run()
+		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return
 	}
 
-	// 5. 压缩为JPEG并编码为Base64
+	// 6. 压缩为JPEG并编码为Base64
 	var jpegBuf bytes.Buffer
 	quality := req.Quality
 	if quality == 0 {
@@ -101,18 +105,18 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	if err != nil {
 		res.Error = fmt.Sprintf("JPEG编码失败: %v", err)
 		// 清理临时文件
-		exec.Command("adb", "-s", deviceId, "shell", "rm", deviceTempPath).Run()
+		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return
 	}
 
-	// 6. 转换为Base64
+	// 7. 转换为Base64
 	res.Success = true
 	res.ImageData = fmt.Sprintf("data:image/jpeg;base64,%s",
 		base64.StdEncoding.EncodeToString(jpegBuf.Bytes()))
 
-	// 7. 清理临时文件
-	exec.Command("adb", "-s", deviceId, "shell", "rm", deviceTempPath).Run()
+	// 8. 清理临时文件
+	adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 	os.Remove(tempFileName)
 	return res, nil
 }
