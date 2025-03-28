@@ -284,36 +284,22 @@ func (s *appService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Upl
 		return nil, gerror.New("保存的文件大小为0")
 	}
 
-	// 输出文件信息
-	g.Log().Debugf(ctx, "文件已保存: %s, 大小: %d 字节", filePath, written)
-
 	// 解析APK文件
 	apkInfo, err := apk.ParseAPK(filePath)
 	if err != nil {
-		// 输出错误详情
-		g.Log().Errorf(ctx, "解析APK文件失败: %v, 文件路径: %s", err, filePath)
 		// 删除已上传的文件
 		_ = gfile.Remove(filePath)
 		return nil, gerror.Newf("解析APK文件失败: %v", err)
 	}
 
-	// 输出解析结果
-	g.Log().Debugf(ctx, "APK解析结果: 应用名=%s, 包名=%s, 版本=%s",
+	g.Log().Debug(ctx, "APK解析结果: 应用名=%s, 包名=%s, 版本=%s",
 		apkInfo.ApplicationName, apkInfo.PackageName, apkInfo.VersionName)
 
-	// 如果解析结果为空，使用文件名作为默认值
-	if apkInfo.ApplicationName == "" {
-		apkInfo.ApplicationName = strings.TrimSuffix(file.Filename, ".apk")
-	}
-	if apkInfo.PackageName == "" {
-		apkInfo.PackageName = "com.example." + strings.ToLower(strings.ReplaceAll(apkInfo.ApplicationName, " ", ""))
-	}
-	if apkInfo.VersionName == "" {
-		apkInfo.VersionName = "1.0.0"
-	}
-
-	// 检查应用包名是否已存在
-	count, err := dao.App.Ctx(ctx).Where("package_name", apkInfo.PackageName).Count()
+	// 检查应用包名和版本是否已存在
+	count, err := dao.App.Ctx(ctx).
+		Where("package_name", apkInfo.PackageName).
+		Where("version", apkInfo.VersionName).
+		Count()
 	if err != nil {
 		// 删除已上传的文件
 		_ = gfile.Remove(filePath)
@@ -322,23 +308,19 @@ func (s *appService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Upl
 	if count > 0 {
 		// 删除已上传的文件
 		_ = gfile.Remove(filePath)
-		return nil, gerror.New("应用包名已存在")
+		return nil, gerror.Newf("应用 %s 版本 %s 已存在", apkInfo.PackageName, apkInfo.VersionName)
 	}
 
 	// 创建应用记录
-	appData := g.Map{
+	_, err = dao.App.Ctx(ctx).Data(g.Map{
 		"name":         apkInfo.ApplicationName,
 		"package_name": apkInfo.PackageName,
 		"version":      apkInfo.VersionName,
 		"size":         written,
 		"app_type":     "用户应用",
 		"apk_path":     filePath,
-	}
+	}).Insert()
 
-	// 输出即将插入的数据
-	g.Log().Debugf(ctx, "即将插入数据库的应用信息: %+v", appData)
-
-	_, err = dao.App.Ctx(ctx).Data(appData).Insert()
 	if err != nil {
 		// 删除已上传的文件
 		_ = gfile.Remove(filePath)

@@ -21,7 +21,7 @@ func initAppTable(ctx context.Context) error {
 			"apk_path" VARCHAR(255) NOT NULL,
 			"created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			"updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE("package_name")
+			UNIQUE("package_name", "version")
 		)
 	`)
 	return err
