@@ -32,6 +32,7 @@ import {
   ArrowRight
 } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
+import { useCloudPhoneStore } from "@/store/modules/cloudphone";
 
 defineOptions({
   name: "CloudPhone"
@@ -95,7 +96,11 @@ provide("groupsList", computed(() => {
 }));
 
 // 当前选中的分组
-const activeGroup = ref(0);
+const cloudPhoneStore = useCloudPhoneStore();
+const activeGroup = computed({
+  get: () => cloudPhoneStore.activeGroupId,
+  set: (value) => cloudPhoneStore.setActiveGroup(value)
+});
 
 // 搜索输入
 const searchInput = ref("");
