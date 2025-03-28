@@ -6,7 +6,7 @@
           <span>应用列表</span>
           <div>
             <el-button type="primary" @click="openAppDialog(null)">添加应用</el-button>
-            <el-button type="success" @click="openUploadDialog">导入应用</el-button>
+            <el-button type="success" @click="(e: MouseEvent) => openUploadDialog()">导入应用</el-button>
           </div>
         </div>
       </template>
@@ -40,19 +40,21 @@
           </el-table-column>
           <el-table-column label="操作">
             <template #default="{ row }">
-              <el-button type="danger" size="small" @click="handleDeleteApp(row)">删除</el-button>
-              <el-dropdown>
-                <el-button type="primary" size="small">
-                  操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item @click="openDeviceDialog('install', row)">安装到设备</el-dropdown-item>
-                    <el-dropdown-item @click="openDeviceDialog('uninstall', row)">从设备卸载</el-dropdown-item>
-                    <el-dropdown-item @click="openDeviceDialog('start', row)">在设备上启动</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <div class="operation-buttons">
+                <el-button type="danger" size="small" @click="handleDeleteApp(row)">删除</el-button>
+                <el-dropdown>
+                  <el-button type="primary" size="small">
+                    操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item @click="openDeviceDialog('install', row)">安装到设备</el-dropdown-item>
+                      <el-dropdown-item @click="openDeviceDialog('uninstall', row)">从设备卸载</el-dropdown-item>
+                      <el-dropdown-item @click="openDeviceDialog('start', row)">在设备上启动</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -425,22 +427,11 @@ const submitUpload = () => {
         appForm.value.size = res.data.fileSize;
         uploadDialogVisible.value = false;
       } else {
-        // 否则打开创建应用表单，并填充数据
-        const fileName = res.data.fileName;
-        const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
-        
-        appForm.value = {
-          name: nameWithoutExt,
-          packageName: 'com.example.' + nameWithoutExt.toLowerCase().replace(/\s+/g, ''),
-          version: '1.0.0',
-          size: res.data.fileSize,
-          appType: AppTypeUser,
-          apkPath: res.data.filePath
-        };
-        
         uploadDialogVisible.value = false;
-        appDialogVisible.value = true;
       }
+      
+      // 刷新应用列表
+      fetchAppList();
     } else {
       ElMessage.error(res.message || '上传失败');
     }
@@ -603,5 +594,11 @@ const submitDeviceAction = () => {
 
 .upload-demo {
   width: 100%;
+}
+
+.operation-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 </style> 
