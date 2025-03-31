@@ -711,6 +711,14 @@ func (s *appService) processBatchStart(task *BatchTask, app *model.App, deviceId
 
 // BatchInstallByDevices 按设备ID批量安装应用
 func (s *appService) BatchInstallByDevices(ctx context.Context, req *v1.BatchInstallByDevicesReq) (res *v1.BatchInstallByDevicesRes, err error) {
+	// 检查设备数量
+	if len(req.DeviceIds) == 0 {
+		return nil, gerror.New("请选择设备")
+	}
+	if len(req.DeviceIds) > 50 {
+		return nil, gerror.New("设备数量不能超过50个")
+	}
+
 	// 验证并调整并发数
 	serviceReq := &BatchOperationReq{
 		ID:        uint(req.Id),
@@ -757,6 +765,14 @@ func (s *appService) BatchInstallByDevices(ctx context.Context, req *v1.BatchIns
 
 // BatchUninstallByDevices 按设备ID批量卸载应用
 func (s *appService) BatchUninstallByDevices(ctx context.Context, req *v1.BatchUninstallByDevicesReq) (res *v1.BatchUninstallByDevicesRes, err error) {
+	// 检查设备数量
+	if len(req.DeviceIds) == 0 {
+		return nil, gerror.New("请选择设备")
+	}
+	if len(req.DeviceIds) > 50 {
+		return nil, gerror.New("设备数量不能超过50个")
+	}
+
 	// 验证并调整并发数
 	serviceReq := &BatchOperationReq{
 		ID:        uint(req.Id),
@@ -798,6 +814,14 @@ func (s *appService) BatchUninstallByDevices(ctx context.Context, req *v1.BatchU
 
 // BatchStartByDevices 按设备ID批量启动应用
 func (s *appService) BatchStartByDevices(ctx context.Context, req *v1.BatchStartByDevicesReq) (res *v1.BatchStartByDevicesRes, err error) {
+	// 检查设备数量
+	if len(req.DeviceIds) == 0 {
+		return nil, gerror.New("请选择设备")
+	}
+	if len(req.DeviceIds) > 50 {
+		return nil, gerror.New("设备数量不能超过50个")
+	}
+
 	// 验证并调整并发数
 	serviceReq := &BatchOperationReq{
 		ID:        uint(req.Id),
@@ -883,6 +907,14 @@ func (s *appService) processBatchStop(task *BatchTask, app *model.App, deviceIds
 
 // BatchStopByDevices 按设备ID批量停止应用
 func (s *appService) BatchStopByDevices(ctx context.Context, req *v1.BatchStopByDevicesReq) (res *v1.BatchStopByDevicesRes, err error) {
+	// 检查设备数量
+	if len(req.DeviceIds) == 0 {
+		return nil, gerror.New("请选择设备")
+	}
+	if len(req.DeviceIds) > 50 {
+		return nil, gerror.New("设备数量不能超过50个")
+	}
+
 	// 验证并调整并发数
 	serviceReq := &BatchOperationReq{
 		ID:        uint(req.Id),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, provide, watch } from "vue";
+import { ref, onMounted, computed, provide, watch, onUnmounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   getGroupList,
@@ -23,7 +23,8 @@ import {
   batchUninstallByDevices,
   batchStartByDevices,
   batchStopByDevices,
-  getBatchTaskStatus
+  getBatchTaskStatus,
+  type BatchTaskStatus
 } from "@/api/app";
 import GroupBadge from "./components/GroupBadge.vue";
 import DeviceStream from "./components/DeviceStream.vue";
@@ -580,60 +581,84 @@ const loadAppList = async () => {
   }
 };
 
-// 批量操作任务状态轮询
-const pollTaskStatus = async (taskId: string, successMessage: string) => {
-  const maxAttempts = 60; // 最多轮询60次
-  const interval = 2000; // 每2秒轮询一次
-  let attempts = 0;
+// 任务状态相关
+const taskStatusDialogVisible = ref(false);
+const taskStatusLoading = ref(false);
+const currentTask = ref<BatchTaskStatus | null>(null);
+const currentTaskId = ref<string>('');
+const taskStatusTimer = ref<number | null>(null);
 
-  const poll = async () => {
-    try {
-      const res = await getBatchTaskStatus(taskId);
-      if (res.code === 0) {
-        const status = res.data;
-        if (status.status === "complete") {
-          ElMessage.success(`${successMessage}，成功: ${status.completed}，失败: ${status.failed}`);
-          return true;
-        } else if (status.status === "failed") {
-          // 获取第一个失败结果的错误信息
-          const failedResult = status.results.find(r => r.status === "failed");
-          ElMessage.error(`操作失败: ${failedResult?.message || "未知错误"}`);
-          return true;
-        }
-      }
-    } catch (error) {
-      console.error("查询任务状态失败:", error);
-      return true;
-    }
-
-    attempts++;
-    if (attempts >= maxAttempts) {
-      ElMessage.warning("任务执行时间过长，请稍后查看结果");
-      return true;
-    }
-
-    return false;
-  };
-
-  const checkStatus = async () => {
-    const finished = await poll();
-    if (!finished) {
-      setTimeout(checkStatus, interval);
-    }
-  };
-
-  checkStatus();
+// 获取任务状态类型
+const getTaskStatusType = (status: string) => {
+  switch (status) {
+    case 'complete': return 'success';
+    case 'failed': return 'danger';
+    case 'running': return 'warning';
+    default: return 'info';
+  }
 };
 
-// 批量应用操作
-const handleBatchAppOperation = async (operation: string) => {
-  // 保存当前操作类型
-  currentOperation.value = operation;
-  // 显示应用选择对话框
-  appListVisible.value = true;
+// 获取任务状态文本
+const getTaskStatusText = (status: string) => {
+  switch (status) {
+    case 'pending': return '等待执行';
+    case 'running': return '执行中';
+    case 'complete': return '执行完成';
+    case 'failed': return '执行失败';
+    default: return status;
+  }
 };
 
-// 处理应用选择
+// 获取进度条状态
+const getProgressStatus = (task: BatchTaskStatus | null) => {
+  if (!task) return '';
+  if (task.status === 'failed') return 'exception';
+  if (task.status === 'complete') return 'success';
+  return '';
+};
+
+// 刷新任务状态
+const refreshTaskStatus = async () => {
+  if (!currentTaskId.value) return;
+
+  taskStatusLoading.value = true;
+  try {
+    const res = await getBatchTaskStatus(currentTaskId.value);
+    currentTask.value = res.data;
+
+    // 如果任务已完成或失败，停止轮询
+    if (res.data.status === 'complete' || res.data.status === 'failed') {
+      stopTaskStatusPolling();
+    }
+  } catch (error) {
+    console.error('获取任务状态失败:', error);
+    ElMessage.error('获取任务状态失败');
+    stopTaskStatusPolling();
+  } finally {
+    taskStatusLoading.value = false;
+  }
+};
+
+// 开始任务状态轮询
+const startTaskStatusPolling = () => {
+  stopTaskStatusPolling(); // 先清除可能存在的定时器
+  taskStatusTimer.value = window.setInterval(refreshTaskStatus, 2000);
+};
+
+// 停止任务状态轮询
+const stopTaskStatusPolling = () => {
+  if (taskStatusTimer.value) {
+    clearInterval(taskStatusTimer.value);
+    taskStatusTimer.value = null;
+  }
+};
+
+// 组件卸载时清理
+onUnmounted(() => {
+  stopTaskStatusPolling();
+});
+
+// 修改 handleAppSelected 函数
 const handleAppSelected = async (app: App) => {
   selectedAppId.value = app.id;
   appListVisible.value = false;
@@ -656,6 +681,13 @@ const handleAppSelected = async (app: App) => {
       maxWorker: 50
     };
 
+    const operationMap = {
+      install: "安装",
+      uninstall: "卸载",
+      start: "启动",
+      stop: "停止"
+    };
+
     switch (currentOperation.value) {
       case "install":
         res = await batchInstallByDevices(data);
@@ -674,16 +706,13 @@ const handleAppSelected = async (app: App) => {
     }
 
     if (res.code === 0) {
-      const operationMap = {
-        install: "安装",
-        uninstall: "卸载",
-        start: "启动",
-        stop: "停止"
-      };
-      ElMessage.success(`批量${operationMap[currentOperation.value]}任务已提交`);
-      pollTaskStatus(res.data.taskId, `批量${operationMap[currentOperation.value]}完成`);
+      // 直接打开任务状态对话框，不再显示提交提示
+      currentTaskId.value = res.data.taskId;
+      await refreshTaskStatus();
+      taskStatusDialogVisible.value = true;
+      startTaskStatusPolling();
     } else {
-      ElMessage.error(res.message || `批量${currentOperation.value}失败`);
+      ElMessage.error(res.message || `批量${operationMap[currentOperation.value]}失败`);
     }
   } catch (error) {
     console.error(`批量${currentOperation.value}失败:`, error);
@@ -692,6 +721,14 @@ const handleAppSelected = async (app: App) => {
     // 清除当前操作类型
     currentOperation.value = "";
   }
+};
+
+// 批量应用操作
+const handleBatchAppOperation = async (operation: string) => {
+  // 保存当前操作类型
+  currentOperation.value = operation;
+  // 显示应用选择对话框
+  appListVisible.value = true;
 };
 
 onMounted(() => {
@@ -1062,6 +1099,66 @@ onMounted(() => {
         <el-table-column prop="packageName" label="包名" />
         <el-table-column prop="version" label="版本" width="100" />
       </el-table>
+    </el-dialog>
+
+    <!-- 任务状态对话框 -->
+    <el-dialog
+      v-model="taskStatusDialogVisible"
+      title="任务执行状态"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="currentTask" class="task-status">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="任务ID">{{ currentTask.taskId }}</el-descriptions-item>
+          <el-descriptions-item label="任务状态">
+            <el-tag :type="getTaskStatusType(currentTask.status)">
+              {{ getTaskStatusText(currentTask.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="总设备数">{{ currentTask.total }}</el-descriptions-item>
+          <el-descriptions-item label="执行进度">
+            <el-progress 
+              :percentage="Math.round(((currentTask.completed + currentTask.failed) / currentTask.total) * 100)"
+              :status="getProgressStatus(currentTask)"
+            >
+              <template #default>
+                {{ currentTask.completed }}/{{ currentTask.total }}
+                <span v-if="currentTask.failed > 0" style="color: #f56c6c">
+                  (失败: {{ currentTask.failed }})
+                </span>
+              </template>
+            </el-progress>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="task-results" style="margin-top: 20px">
+          <el-table :data="currentTask.results" style="width: 100%">
+            <el-table-column prop="deviceId" label="设备ID" width="180" />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'complete' ? 'success' : 'danger'">
+                  {{ row.status === 'complete' ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="message" label="执行结果" />
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="taskStatusDialogVisible = false">关闭</el-button>
+          <el-button 
+            type="primary" 
+            @click="refreshTaskStatus" 
+            :loading="taskStatusLoading"
+            v-if="currentTask?.status === 'running' || currentTask?.status === 'pending'"
+          >
+            刷新
+          </el-button>
+        </span>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -1446,5 +1543,16 @@ onMounted(() => {
 
 .group-radio-item:hover {
   background-color: #f5f7fa;
+}
+
+.task-status {
+  .el-descriptions {
+    margin-bottom: 20px;
+  }
+}
+
+.task-results {
+  max-height: 400px;
+  overflow-y: auto;
 }
 </style>

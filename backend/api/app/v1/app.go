@@ -168,7 +168,7 @@ type BatchTaskResult struct {
 type BatchInstallByDevicesReq struct {
 	g.Meta    `path:"/apps/batch-install-by-devices" tags:"应用管理" method:"post" summary:"按设备批量安装应用" description:"按设备ID列表批量安装应用，支持并发控制"`
 	Id        int64    `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
-	DeviceIds []string `json:"deviceIds" v:"required|length:1,50#请选择设备|设备数量必须在1-50之间" dc:"设备ID列表，最多50个"`
+	DeviceIds []string `json:"deviceIds" v:"required#请选择设备" dc:"设备ID列表，最多50个"`
 	MaxWorker int      `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
 }
 
@@ -182,7 +182,7 @@ type BatchInstallByDevicesRes struct {
 type BatchUninstallByDevicesReq struct {
 	g.Meta    `path:"/apps/batch-uninstall-by-devices" tags:"应用管理" method:"post" summary:"按设备批量卸载应用" description:"按设备ID列表批量卸载应用，支持并发控制"`
 	Id        int64    `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
-	DeviceIds []string `json:"deviceIds" v:"required|length:1,50#请选择设备|设备数量必须在1-50之间" dc:"设备ID列表，最多50个"`
+	DeviceIds []string `json:"deviceIds" v:"required#请选择设备" dc:"设备ID列表，最多50个"`
 	MaxWorker int      `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
 }
 
@@ -196,7 +196,7 @@ type BatchUninstallByDevicesRes struct {
 type BatchStartByDevicesReq struct {
 	g.Meta    `path:"/apps/batch-start-by-devices" tags:"应用管理" method:"post" summary:"按设备批量启动应用" description:"按设备ID列表批量启动应用，支持并发控制"`
 	Id        int64    `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
-	DeviceIds []string `json:"deviceIds" v:"required|length:1,50#请选择设备|设备数量必须在1-50之间" dc:"设备ID列表，最多50个"`
+	DeviceIds []string `json:"deviceIds" v:"required#请选择设备" dc:"设备ID列表，最多50个"`
 	MaxWorker int      `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
 }
 
@@ -210,7 +210,7 @@ type BatchStartByDevicesRes struct {
 type BatchStopByDevicesReq struct {
 	g.Meta    `path:"/apps/batch-stop-by-devices" tags:"应用管理" method:"post" summary:"按设备批量停止应用" description:"按设备ID列表批量停止应用，支持并发控制"`
 	Id        int64    `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
-	DeviceIds []string `json:"deviceIds" v:"required|length:1,50#请选择设备|设备数量必须在1-50之间" dc:"设备ID列表，最多50个"`
+	DeviceIds []string `json:"deviceIds" v:"required#请选择设备" dc:"设备ID列表，最多50个"`
 	MaxWorker int      `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
 }
 
