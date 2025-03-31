@@ -44,13 +44,25 @@
                 <el-button type="danger" size="small" @click="handleDeleteApp(row)">删除</el-button>
                 <el-dropdown>
                   <el-button type="primary" size="small">
-                    操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                    设备操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item @click="openDeviceDialog('install', row)">安装到设备</el-dropdown-item>
                       <el-dropdown-item @click="openDeviceDialog('uninstall', row)">从设备卸载</el-dropdown-item>
                       <el-dropdown-item @click="openDeviceDialog('start', row)">在设备上启动</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-dropdown>
+                  <el-button type="success" size="small">
+                    分组操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item @click="openGroupDialog('install', row)">批量安装到分组</el-dropdown-item>
+                      <el-dropdown-item @click="openGroupDialog('uninstall', row)">批量从分组卸载</el-dropdown-item>
+                      <el-dropdown-item @click="openGroupDialog('start', row)">批量在分组启动</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -149,7 +161,7 @@
           <el-progress 
             v-if="uploading" 
             :percentage="uploadProgress" 
-            :status="uploadProgress === 100 ? 'success' : ''"
+            :status="uploadProgress === 100 ? 'success' : 'exception'"
           />
         </template>
       </el-form>
@@ -191,11 +203,104 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 分组操作对话框 -->
+    <el-dialog v-model="groupDialogVisible" :title="getGroupDialogTitle" width="500px">
+      <el-form ref="groupFormRef" :model="groupForm" label-width="100px">
+        <el-form-item label="选择分组" prop="groupId">
+          <el-select v-model="groupForm.groupId" placeholder="请选择分组" style="width: 100%">
+            <el-option
+              v-for="group in groupList"
+              :key="group.id"
+              :label="group.name"
+              :value="group.id"
+            >
+              <span>{{ group.name }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">
+                ({{ group.deviceCount }}台设备)
+              </span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="并发数" prop="maxWorker">
+          <el-input-number 
+            v-model="groupForm.maxWorker" 
+            :min="1" 
+            :max="50" 
+            placeholder="请输入并发数"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="groupDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitGroupAction" :loading="groupActionLoading">
+            确认
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 任务状态对话框 -->
+    <el-dialog v-model="taskStatusDialogVisible" title="任务执行状态" width="800px">
+      <div v-if="currentTask" class="task-status">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="任务ID">{{ currentTask.taskId }}</el-descriptions-item>
+          <el-descriptions-item label="任务状态">
+            <el-tag :type="getTaskStatusType(currentTask.status)">
+              {{ getTaskStatusText(currentTask.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="总设备数">{{ currentTask.total }}</el-descriptions-item>
+          <el-descriptions-item label="执行进度">
+            <el-progress 
+              :percentage="Math.round(((currentTask.completed + currentTask.failed) / currentTask.total) * 100)"
+              :status="getProgressStatus(currentTask)"
+            >
+              <template #default>
+                {{ currentTask.completed }}/{{ currentTask.total }}
+                <span v-if="currentTask.failed > 0" style="color: #f56c6c">
+                  (失败: {{ currentTask.failed }})
+                </span>
+              </template>
+            </el-progress>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="task-results" style="margin-top: 20px">
+          <el-table :data="currentTask.results" style="width: 100%">
+            <el-table-column prop="deviceId" label="设备ID" width="180" />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'complete' ? 'success' : 'danger'">
+                  {{ row.status === 'complete' ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="message" label="执行结果" />
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="taskStatusDialogVisible = false">关闭</el-button>
+          <el-button 
+            type="primary" 
+            @click="refreshTaskStatus" 
+            :loading="taskStatusLoading"
+            v-if="currentTask?.status === 'running' || currentTask?.status === 'pending'"
+          >
+            刷新
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, onUnmounted } from "vue";
 import { ElMessage, ElMessageBox, FormInstance, UploadUserFile } from "element-plus";
 import { ArrowDown, UploadFilled } from "@element-plus/icons-vue";
 import { 
@@ -206,9 +311,15 @@ import {
   installApp,
   uninstallApp,
   startApp,
-  type App
+  batchInstallApp,
+  batchUninstallApp,
+  batchStartApp,
+  getBatchTaskStatus,
+  type App,
+  type BatchTaskStatus
 } from "@/api/app";
 import { getDeviceList, type Device } from "@/api/device";
+import { getGroupList, type GroupItem } from "@/api/group";
 
 // 应用类型常量
 const AppTypeSystem = "系统应用";
@@ -303,7 +414,7 @@ const getDeviceDialogTitle = computed(() => {
 });
 
 // 获取标签类型
-const getTagType = (type: string) => {
+const getTagType = (type: string): 'success' | 'warning' | 'info' | 'primary' | 'danger' => {
   switch (type) {
     case AppTypeSystem:
       return 'info';
@@ -312,7 +423,7 @@ const getTagType = (type: string) => {
     case AppTypeSettings:
       return 'warning';
     default:
-      return '';
+      return 'info';
   }
 };
 
@@ -333,10 +444,34 @@ const formatSize = (size: number) => {
   }
 };
 
+// 分组相关
+const groupList = ref<GroupItem[]>([]);
+const groupDialogVisible = ref(false);
+const groupActionType = ref<'install' | 'uninstall' | 'start'>('install');
+const groupActionLoading = ref(false);
+
+interface GroupDialogForm {
+  groupId: number;
+  maxWorker: number;
+}
+
+const groupForm = ref<GroupDialogForm>({
+  groupId: 0,
+  maxWorker: 10
+});
+
+// 任务状态相关
+const taskStatusDialogVisible = ref(false);
+const taskStatusLoading = ref(false);
+const currentTask = ref<BatchTaskStatus | null>(null);
+const currentTaskId = ref<string>('');
+const taskStatusTimer = ref<number | null>(null);
+
 // 初始化数据
 onMounted(() => {
   fetchAppList();
   fetchDeviceList();
+  fetchGroupList();
 });
 
 // 获取应用列表
@@ -374,6 +509,25 @@ const fetchDeviceList = () => {
   }).catch(err => {
     console.error('获取设备列表出错:', err);
   });
+};
+
+// 获取分组列表
+const fetchGroupList = async () => {
+  try {
+    const res = await getGroupList({
+      page: 1,
+      pageSize: 1000 // 获取所有分组
+    });
+    if (res.code === 0 && res.data) {
+      groupList.value = res.data.list || [];
+    } else {
+      console.error('获取分组列表失败:', res.message);
+      ElMessage.error(res.message || '获取分组列表失败');
+    }
+  } catch (error) {
+    console.error('获取分组列表失败:', error);
+    ElMessage.error('获取分组列表失败');
+  }
 };
 
 // 搜索处理
@@ -599,6 +753,142 @@ const submitDeviceAction = () => {
     actionLoading.value = false;
   });
 };
+
+// 打开分组操作对话框
+const openGroupDialog = (action: 'install' | 'uninstall' | 'start', app: App) => {
+  groupActionType.value = action;
+  currentApp.value = app;
+  groupForm.value = {
+    groupId: 0,
+    maxWorker: 10
+  };
+  groupDialogVisible.value = true;
+  fetchGroupList();
+};
+
+// 获取分组对话框标题
+const getGroupDialogTitle = computed(() => {
+  const actionText = {
+    install: '批量安装',
+    uninstall: '批量卸载',
+    start: '批量启动'
+  }[groupActionType.value];
+  return `${actionText}应用到分组设备`;
+});
+
+// 提交分组操作
+const submitGroupAction = async () => {
+  if (!currentApp.value || !groupForm.value.groupId) {
+    ElMessage.warning('请选择分组');
+    return;
+  }
+
+  groupActionLoading.value = true;
+  try {
+    const data = {
+      id: currentApp.value.id,
+      groupId: groupForm.value.groupId,
+      maxWorker: groupForm.value.maxWorker
+    };
+
+    let res;
+    switch (groupActionType.value) {
+      case 'install':
+        res = await batchInstallApp(data);
+        break;
+      case 'uninstall':
+        res = await batchUninstallApp(data);
+        break;
+      case 'start':
+        res = await batchStartApp(data);
+        break;
+    }
+
+    groupDialogVisible.value = false;
+    ElMessage.success('批量操作已开始执行');
+    
+    // 打开任务状态对话框
+    currentTaskId.value = res.data.taskId;
+    await refreshTaskStatus();
+    taskStatusDialogVisible.value = true;
+    startTaskStatusPolling();
+
+  } catch (error) {
+    console.error('批量操作失败:', error);
+    ElMessage.error('批量操作失败');
+  } finally {
+    groupActionLoading.value = false;
+  }
+};
+
+// 刷新任务状态
+const refreshTaskStatus = async () => {
+  if (!currentTaskId.value) return;
+
+  taskStatusLoading.value = true;
+  try {
+    const res = await getBatchTaskStatus(currentTaskId.value);
+    currentTask.value = res.data;
+
+    // 如果任务已完成或失败，停止轮询
+    if (res.data.status === 'complete' || res.data.status === 'failed') {
+      stopTaskStatusPolling();
+    }
+  } catch (error) {
+    console.error('获取任务状态失败:', error);
+    ElMessage.error('获取任务状态失败');
+    stopTaskStatusPolling();
+  } finally {
+    taskStatusLoading.value = false;
+  }
+};
+
+// 开始任务状态轮询
+const startTaskStatusPolling = () => {
+  stopTaskStatusPolling(); // 先清除可能存在的定时器
+  taskStatusTimer.value = window.setInterval(refreshTaskStatus, 2000);
+};
+
+// 停止任务状态轮询
+const stopTaskStatusPolling = () => {
+  if (taskStatusTimer.value) {
+    clearInterval(taskStatusTimer.value);
+    taskStatusTimer.value = null;
+  }
+};
+
+// 获取任务状态类型
+const getTaskStatusType = (status: string) => {
+  switch (status) {
+    case 'complete': return 'success';
+    case 'failed': return 'danger';
+    case 'running': return 'warning';
+    default: return 'info';
+  }
+};
+
+// 获取任务状态文本
+const getTaskStatusText = (status: string) => {
+  switch (status) {
+    case 'pending': return '等待执行';
+    case 'running': return '执行中';
+    case 'complete': return '执行完成';
+    case 'failed': return '执行失败';
+    default: return status;
+  }
+};
+
+// 获取进度条状态
+const getProgressStatus = (task: BatchTaskStatus) => {
+  if (task.status === 'failed') return 'exception';
+  if (task.status === 'complete') return 'success';
+  return '';
+};
+
+// 组件卸载时清理
+onUnmounted(() => {
+  stopTaskStatusPolling();
+});
 </script>
 
 <style scoped>
@@ -643,7 +933,6 @@ const submitDeviceAction = () => {
 .operation-buttons {
   display: flex;
   gap: 8px;
-  align-items: center;
 }
 
 .file-info {
@@ -667,5 +956,16 @@ const submitDeviceAction = () => {
   color: var(--el-text-color-secondary);
   text-align: right;
   padding-right: 12px;
+}
+
+.task-status {
+  .el-descriptions {
+    margin-bottom: 20px;
+  }
+}
+
+.task-results {
+  max-height: 400px;
+  overflow-y: auto;
 }
 </style> 

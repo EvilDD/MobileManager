@@ -108,3 +108,23 @@ func (c *ControllerV1) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.U
 	// 将处理委托给Service层
 	return service.AppService.Upload(ctx, req)
 }
+
+// BatchInstall 批量安装应用
+func (c *ControllerV1) BatchInstall(ctx context.Context, req *v1.BatchInstallReq) (res *v1.BatchInstallRes, err error) {
+	return service.AppService.BatchInstall(ctx, req)
+}
+
+// BatchUninstall 批量卸载应用
+func (c *ControllerV1) BatchUninstall(ctx context.Context, req *v1.BatchUninstallReq) (res *v1.BatchUninstallRes, err error) {
+	return service.AppService.BatchUninstall(ctx, req)
+}
+
+// BatchStart 批量启动应用
+func (c *ControllerV1) BatchStart(ctx context.Context, req *v1.BatchStartReq) (res *v1.BatchStartRes, err error) {
+	return service.AppService.BatchStart(ctx, req)
+}
+
+// BatchTaskStatus 查询批量操作任务状态
+func (c *ControllerV1) BatchTaskStatus(ctx context.Context, req *v1.BatchTaskStatusReq) (res *v1.BatchTaskStatusRes, err error) {
+	return service.AppService.BatchTaskStatus(ctx, req)
+}

@@ -12,6 +12,14 @@ const (
 	AppTypeSettings = "系统设置"
 )
 
+// 批量操作任务状态
+const (
+	TaskStatusPending  = "pending"  // 等待执行
+	TaskStatusRunning  = "running"  // 执行中
+	TaskStatusComplete = "complete" // 执行完成
+	TaskStatusFailed   = "failed"   // 执行失败
+)
+
 type ListReq struct {
 	g.Meta   `path:"/apps/list" tags:"应用管理" method:"get" summary:"获取应用列表"`
 	Page     int    `json:"page" v:"required#请输入页码" dc:"页码"`
@@ -91,4 +99,67 @@ type App struct {
 	ApkPath     string `json:"apkPath"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
+}
+
+// 批量安装请求
+type BatchInstallReq struct {
+	g.Meta    `path:"/apps/batch-install" tags:"应用管理" method:"post" summary:"批量安装应用" description:"按分组批量安装应用到设备，支持并发控制"`
+	Id        int64 `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
+	GroupId   int64 `json:"groupId" v:"required#请输入分组ID" dc:"分组ID"`
+	MaxWorker int   `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
+}
+
+type BatchInstallRes struct {
+	TaskId    string   `json:"taskId" dc:"任务ID(用于查询任务状态)"`
+	Total     int      `json:"total" dc:"总设备数"`
+	DeviceIds []string `json:"deviceIds" dc:"设备ID列表"`
+}
+
+// 批量卸载请求
+type BatchUninstallReq struct {
+	g.Meta    `path:"/apps/batch-uninstall" tags:"应用管理" method:"post" summary:"批量卸载应用" description:"按分组批量卸载设备上的应用，支持并发控制"`
+	Id        int64 `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
+	GroupId   int64 `json:"groupId" v:"required#请输入分组ID" dc:"分组ID"`
+	MaxWorker int   `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
+}
+
+type BatchUninstallRes struct {
+	TaskId    string   `json:"taskId" dc:"任务ID(用于查询任务状态)"`
+	Total     int      `json:"total" dc:"总设备数"`
+	DeviceIds []string `json:"deviceIds" dc:"设备ID列表"`
+}
+
+// 批量启动请求
+type BatchStartReq struct {
+	g.Meta    `path:"/apps/batch-start" tags:"应用管理" method:"post" summary:"批量启动应用" description:"按分组批量启动设备上的应用，支持并发控制"`
+	Id        int64 `json:"id" v:"required#请输入应用ID" dc:"应用ID"`
+	GroupId   int64 `json:"groupId" v:"required#请输入分组ID" dc:"分组ID"`
+	MaxWorker int   `json:"maxWorker" v:"required|min:1|max:50#请输入并发数|并发数最小为1|并发数最大为50" dc:"最大并发数(1-50)"`
+}
+
+type BatchStartRes struct {
+	TaskId    string   `json:"taskId" dc:"任务ID(用于查询任务状态)"`
+	Total     int      `json:"total" dc:"总设备数"`
+	DeviceIds []string `json:"deviceIds" dc:"设备ID列表"`
+}
+
+// 批量操作任务查询请求
+type BatchTaskStatusReq struct {
+	g.Meta `path:"/apps/batch-task-status" tags:"应用管理" method:"get" summary:"查询批量操作任务状态" description:"查询批量安装/卸载/启动任务的执行状态和结果"`
+	TaskId string `v:"required#请输入任务ID" in:"query" dc:"任务ID"`
+}
+
+type BatchTaskStatusRes struct {
+	TaskId    string            `json:"taskId" dc:"任务ID"`
+	Status    string            `json:"status" dc:"任务状态(pending:等待执行 running:执行中 complete:执行完成 failed:执行失败)"`
+	Total     int               `json:"total" dc:"总设备数"`
+	Completed int               `json:"completed" dc:"已完成数"`
+	Failed    int               `json:"failed" dc:"失败数"`
+	Results   []BatchTaskResult `json:"results" dc:"执行结果列表"`
+}
+
+type BatchTaskResult struct {
+	DeviceId string `json:"deviceId" dc:"设备ID"`
+	Status   string `json:"status" dc:"执行状态(complete:成功 failed:失败)"`
+	Message  string `json:"message" dc:"执行结果信息"`
 }

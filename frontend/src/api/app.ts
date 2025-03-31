@@ -117,4 +117,87 @@ export function startApp(data: {
     "/api/apps/start",
     { data }
   );
-} 
+}
+
+/** 批量操作任务结果 */
+export interface BatchTaskResult {
+  deviceId: string;
+  status: string;
+  message: string;
+}
+
+/** 批量操作任务状态 */
+export interface BatchTaskStatus {
+  taskId: string;
+  status: string;
+  total: number;
+  completed: number;
+  failed: number;
+  results: BatchTaskResult[];
+}
+
+/** 批量操作响应 */
+export interface BatchOperationResult {
+  code: number;
+  message: string;
+  data: {
+    taskId: string;
+    total: number;
+    deviceIds: string[];
+  };
+}
+
+/** 批量任务状态响应 */
+export interface BatchTaskStatusResult {
+  code: number;
+  message: string;
+  data: BatchTaskStatus;
+}
+
+/** 批量安装应用到分组设备 */
+export function batchInstallApp(data: {
+  id: number;
+  groupId: number;
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-install",
+    { data }
+  );
+}
+
+/** 批量从分组设备卸载应用 */
+export function batchUninstallApp(data: {
+  id: number;
+  groupId: number;
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-uninstall",
+    { data }
+  );
+}
+
+/** 批量启动分组设备上的应用 */
+export function batchStartApp(data: {
+  id: number;
+  groupId: number;
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-start",
+    { data }
+  );
+}
+
+/** 查询批量操作任务状态 */
+export function getBatchTaskStatus(taskId: string) {
+  return http.request<BatchTaskStatusResult>(
+    "get",
+    "/api/apps/batch-task-status",
+    { params: { taskId } }
+  );
+}

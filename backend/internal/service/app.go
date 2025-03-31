@@ -333,3 +333,321 @@ func (s *appService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Upl
 
 	return
 }
+
+// 任务管理器
+var taskManager = struct {
+	tasks map[string]*BatchTask
+}{
+	tasks: make(map[string]*BatchTask),
+}
+
+// BatchTask 批量操作任务
+type BatchTask struct {
+	TaskId    string
+	Status    string
+	Total     int
+	Completed int
+	Failed    int
+	Results   []v1.BatchTaskResult
+}
+
+// BatchInstall 批量安装应用
+func (s *appService) BatchInstall(ctx context.Context, req *v1.BatchInstallReq) (res *v1.BatchInstallRes, err error) {
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 检查APK文件是否存在
+	if !gfile.Exists(app.ApkPath) {
+		return nil, gerror.New("APK文件不存在")
+	}
+
+	// 获取分组下的设备列表
+	var devices []*model.Device
+	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupId).Scan(&devices)
+	if err != nil {
+		return nil, err
+	}
+	if len(devices) == 0 {
+		return nil, gerror.New("分组下没有设备")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	deviceIds := make([]string, 0, len(devices))
+	for _, device := range devices {
+		deviceIds = append(deviceIds, device.DeviceId)
+	}
+
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(devices),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(devices)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchInstall(task, app, deviceIds, req.MaxWorker)
+
+	return &v1.BatchInstallRes{
+		TaskId:    taskId,
+		Total:     len(devices),
+		DeviceIds: deviceIds,
+	}, nil
+}
+
+// BatchUninstall 批量卸载应用
+func (s *appService) BatchUninstall(ctx context.Context, req *v1.BatchUninstallReq) (res *v1.BatchUninstallRes, err error) {
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 获取分组下的设备列表
+	var devices []*model.Device
+	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupId).Scan(&devices)
+	if err != nil {
+		return nil, err
+	}
+	if len(devices) == 0 {
+		return nil, gerror.New("分组下没有设备")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	deviceIds := make([]string, 0, len(devices))
+	for _, device := range devices {
+		deviceIds = append(deviceIds, device.DeviceId)
+	}
+
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(devices),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(devices)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchUninstall(task, app, deviceIds, req.MaxWorker)
+
+	return &v1.BatchUninstallRes{
+		TaskId:    taskId,
+		Total:     len(devices),
+		DeviceIds: deviceIds,
+	}, nil
+}
+
+// BatchStart 批量启动应用
+func (s *appService) BatchStart(ctx context.Context, req *v1.BatchStartReq) (res *v1.BatchStartRes, err error) {
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 获取分组下的设备列表
+	var devices []*model.Device
+	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupId).Scan(&devices)
+	if err != nil {
+		return nil, err
+	}
+	if len(devices) == 0 {
+		return nil, gerror.New("分组下没有设备")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	deviceIds := make([]string, 0, len(devices))
+	for _, device := range devices {
+		deviceIds = append(deviceIds, device.DeviceId)
+	}
+
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(devices),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(devices)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchStart(task, app, deviceIds, req.MaxWorker)
+
+	return &v1.BatchStartRes{
+		TaskId:    taskId,
+		Total:     len(devices),
+		DeviceIds: deviceIds,
+	}, nil
+}
+
+// BatchTaskStatus 查询批量操作任务状态
+func (s *appService) BatchTaskStatus(ctx context.Context, req *v1.BatchTaskStatusReq) (res *v1.BatchTaskStatusRes, err error) {
+	task, ok := taskManager.tasks[req.TaskId]
+	if !ok {
+		return nil, gerror.New("任务不存在")
+	}
+
+	return &v1.BatchTaskStatusRes{
+		TaskId:    task.TaskId,
+		Status:    task.Status,
+		Total:     task.Total,
+		Completed: task.Completed,
+		Failed:    task.Failed,
+		Results:   task.Results,
+	}, nil
+}
+
+// processBatchInstall 处理批量安装任务
+func (s *appService) processBatchInstall(task *BatchTask, app *model.App, deviceIds []string, maxWorker int) {
+	task.Status = v1.TaskStatusRunning
+
+	// 创建工作池
+	workerChan := make(chan struct{}, maxWorker)
+	doneChan := make(chan struct{})
+
+	// 启动工作协程
+	for _, deviceId := range deviceIds {
+		workerChan <- struct{}{} // 获取工作槽
+		go func(deviceId string) {
+			defer func() {
+				<-workerChan // 释放工作槽
+				if task.Completed+task.Failed == task.Total {
+					task.Status = v1.TaskStatusComplete
+					close(doneChan)
+				}
+			}()
+
+			// 执行安装
+			output, err := adb.InstallApp(deviceId, app.ApkPath)
+			result := v1.BatchTaskResult{
+				DeviceId: deviceId,
+				Status:   v1.TaskStatusComplete,
+			}
+
+			if err != nil {
+				result.Status = v1.TaskStatusFailed
+				result.Message = err.Error() + ": " + output
+				task.Failed++
+			} else {
+				result.Message = "安装成功"
+				task.Completed++
+			}
+
+			task.Results = append(task.Results, result)
+		}(deviceId)
+	}
+
+	// 等待所有任务完成
+	<-doneChan
+}
+
+// processBatchUninstall 处理批量卸载任务
+func (s *appService) processBatchUninstall(task *BatchTask, app *model.App, deviceIds []string, maxWorker int) {
+	task.Status = v1.TaskStatusRunning
+
+	// 创建工作池
+	workerChan := make(chan struct{}, maxWorker)
+	doneChan := make(chan struct{})
+
+	// 启动工作协程
+	for _, deviceId := range deviceIds {
+		workerChan <- struct{}{} // 获取工作槽
+		go func(deviceId string) {
+			defer func() {
+				<-workerChan // 释放工作槽
+				if task.Completed+task.Failed == task.Total {
+					task.Status = v1.TaskStatusComplete
+					close(doneChan)
+				}
+			}()
+
+			// 执行卸载
+			output, err := adb.UninstallApp(deviceId, app.PackageName)
+			result := v1.BatchTaskResult{
+				DeviceId: deviceId,
+				Status:   v1.TaskStatusComplete,
+			}
+
+			if err != nil {
+				result.Status = v1.TaskStatusFailed
+				result.Message = err.Error() + ": " + output
+				task.Failed++
+			} else {
+				result.Message = "卸载成功"
+				task.Completed++
+			}
+
+			task.Results = append(task.Results, result)
+		}(deviceId)
+	}
+
+	// 等待所有任务完成
+	<-doneChan
+}
+
+// processBatchStart 处理批量启动任务
+func (s *appService) processBatchStart(task *BatchTask, app *model.App, deviceIds []string, maxWorker int) {
+	task.Status = v1.TaskStatusRunning
+
+	// 创建工作池
+	workerChan := make(chan struct{}, maxWorker)
+	doneChan := make(chan struct{})
+
+	// 启动工作协程
+	for _, deviceId := range deviceIds {
+		workerChan <- struct{}{} // 获取工作槽
+		go func(deviceId string) {
+			defer func() {
+				<-workerChan // 释放工作槽
+				if task.Completed+task.Failed == task.Total {
+					task.Status = v1.TaskStatusComplete
+					close(doneChan)
+				}
+			}()
+
+			// 执行启动
+			output, err := adb.StartApp(deviceId, app.PackageName)
+			result := v1.BatchTaskResult{
+				DeviceId: deviceId,
+				Status:   v1.TaskStatusComplete,
+			}
+
+			if err != nil {
+				result.Status = v1.TaskStatusFailed
+				result.Message = err.Error() + ": " + output
+				task.Failed++
+			} else {
+				result.Message = "启动成功"
+				task.Completed++
+			}
+
+			task.Results = append(task.Results, result)
+		}(deviceId)
+	}
+
+	// 等待所有任务完成
+	<-doneChan
+}
