@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, provide } from "vue";
+import { ref, onMounted, computed, provide, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   getGroupList,
@@ -16,6 +16,15 @@ import {
   batchGoHome,
   batchKillApps
 } from "@/api/device";
+import {
+  getAppList,
+  type App,
+  batchInstallByDevices,
+  batchUninstallByDevices,
+  batchStartByDevices,
+  batchStopByDevices,
+  getBatchTaskStatus
+} from "@/api/app";
 import GroupBadge from "./components/GroupBadge.vue";
 import DeviceStream from "./components/DeviceStream.vue";
 import DeviceScreenshot from "./components/DeviceScreenshot.vue";
@@ -508,7 +517,18 @@ const handleBatchKillApps = async () => {
     return;
   }
 
+  // 添加二次确认
   try {
+    await ElMessageBox.confirm(
+      '确定要清除所选设备的后台应用吗？',
+      '操作确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+
     const res = await batchKillApps(selectedDevices.value);
     if (res.code === 0) {
       ElMessage.success('批量清除后台应用操作已发送');
@@ -522,14 +542,162 @@ const handleBatchKillApps = async () => {
       ElMessage.error(res.message || '批量清除后台应用失败');
     }
   } catch (error) {
-    console.error('批量清除后台应用失败:', error);
-    ElMessage.error('批量清除后台应用失败');
+    if (error !== 'cancel') {
+      console.error('批量清除后台应用失败:', error);
+      ElMessage.error('批量清除后台应用失败');
+    }
+  }
+};
+
+// 应用列表数据
+const appList = ref<App[]>([]);
+const appListLoading = ref(false);
+const appListVisible = ref(false);
+const selectedAppId = ref<number | null>(null);
+
+// 当前选择的操作类型
+const currentOperation = ref<string>("");
+
+// 获取应用列表
+const loadAppList = async () => {
+  try {
+    appListLoading.value = true;
+    const res = await getAppList({
+      page: 1,
+      pageSize: 100,
+      appType: "用户应用"
+    });
+    if (res.code === 0) {
+      appList.value = res.data.list;
+    } else {
+      ElMessage.error(res.message || "获取应用列表失败");
+    }
+  } catch (error) {
+    console.error("获取应用列表失败:", error);
+    ElMessage.error("获取应用列表失败");
+  } finally {
+    appListLoading.value = false;
+  }
+};
+
+// 批量操作任务状态轮询
+const pollTaskStatus = async (taskId: string, successMessage: string) => {
+  const maxAttempts = 60; // 最多轮询60次
+  const interval = 2000; // 每2秒轮询一次
+  let attempts = 0;
+
+  const poll = async () => {
+    try {
+      const res = await getBatchTaskStatus(taskId);
+      if (res.code === 0) {
+        const status = res.data;
+        if (status.status === "complete") {
+          ElMessage.success(`${successMessage}，成功: ${status.completed}，失败: ${status.failed}`);
+          return true;
+        } else if (status.status === "failed") {
+          // 获取第一个失败结果的错误信息
+          const failedResult = status.results.find(r => r.status === "failed");
+          ElMessage.error(`操作失败: ${failedResult?.message || "未知错误"}`);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error("查询任务状态失败:", error);
+      return true;
+    }
+
+    attempts++;
+    if (attempts >= maxAttempts) {
+      ElMessage.warning("任务执行时间过长，请稍后查看结果");
+      return true;
+    }
+
+    return false;
+  };
+
+  const checkStatus = async () => {
+    const finished = await poll();
+    if (!finished) {
+      setTimeout(checkStatus, interval);
+    }
+  };
+
+  checkStatus();
+};
+
+// 批量应用操作
+const handleBatchAppOperation = async (operation: string) => {
+  // 保存当前操作类型
+  currentOperation.value = operation;
+  // 显示应用选择对话框
+  appListVisible.value = true;
+};
+
+// 处理应用选择
+const handleAppSelected = async (app: App) => {
+  selectedAppId.value = app.id;
+  appListVisible.value = false;
+
+  if (!currentOperation.value) {
+    return;
+  }
+
+  // 获取选中的设备ID列表
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning("请先选择要操作的设备");
+    return;
+  }
+
+  try {
+    let res;
+    const data = {
+      id: selectedAppId.value,
+      deviceIds: selectedDevices.value,
+      maxWorker: 50
+    };
+
+    switch (currentOperation.value) {
+      case "install":
+        res = await batchInstallByDevices(data);
+        break;
+      case "uninstall":
+        res = await batchUninstallByDevices(data);
+        break;
+      case "start":
+        res = await batchStartByDevices(data);
+        break;
+      case "stop":
+        res = await batchStopByDevices(data);
+        break;
+      default:
+        return;
+    }
+
+    if (res.code === 0) {
+      const operationMap = {
+        install: "安装",
+        uninstall: "卸载",
+        start: "启动",
+        stop: "停止"
+      };
+      ElMessage.success(`批量${operationMap[currentOperation.value]}任务已提交`);
+      pollTaskStatus(res.data.taskId, `批量${operationMap[currentOperation.value]}完成`);
+    } else {
+      ElMessage.error(res.message || `批量${currentOperation.value}失败`);
+    }
+  } catch (error) {
+    console.error(`批量${currentOperation.value}失败:`, error);
+    ElMessage.error(`批量${currentOperation.value}失败`);
+  } finally {
+    // 清除当前操作类型
+    currentOperation.value = "";
   }
 };
 
 onMounted(() => {
   getGroups();
   getDevices();
+  loadAppList();
 });
 </script>
 
@@ -643,7 +811,7 @@ onMounted(() => {
           </el-button>
 
           <el-button
-            type="primary"
+            type="success"
             :disabled="selectedDevices.length === 0"
             @click="handleBatchGoHome"
           >
@@ -651,12 +819,27 @@ onMounted(() => {
           </el-button>
 
           <el-button
-            type="primary"
+            type="danger"
             :disabled="selectedDevices.length === 0"
             @click="handleBatchKillApps"
           >
             清除后台应用
           </el-button>
+
+          <el-dropdown @command="handleBatchAppOperation" trigger="click">
+            <el-button :loading="appListLoading">
+              应用操作
+              <el-icon class="el-icon--right"><arrow-down /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="install">安装应用</el-dropdown-item>
+                <el-dropdown-item command="uninstall">卸载应用</el-dropdown-item>
+                <el-dropdown-item command="start">启动应用</el-dropdown-item>
+                <el-dropdown-item command="stop">停止应用</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
 
           <el-dropdown @command="changeRefreshInterval" trigger="click">
             <el-button type="default" size="small">
@@ -858,6 +1041,27 @@ onMounted(() => {
           <el-button type="primary" @click="handleConfirmMoveGroup">确定</el-button>
         </span>
       </template>
+    </el-dialog>
+
+    <!-- 修改应用选择对话框 -->
+    <el-dialog
+      v-model="appListVisible"
+      title="选择应用"
+      width="600px"
+      :close-on-click-modal="false"
+      @close="currentOperation = ''"
+    >
+      <el-table
+        v-loading="appListLoading"
+        :data="appList"
+        style="width: 100%"
+        height="400"
+        @row-click="handleAppSelected"
+      >
+        <el-table-column prop="name" label="应用名称" />
+        <el-table-column prop="packageName" label="包名" />
+        <el-table-column prop="version" label="版本" width="100" />
+      </el-table>
     </el-dialog>
   </div>
 </template>

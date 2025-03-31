@@ -146,3 +146,23 @@ func (c *ControllerV1) BatchStart(ctx context.Context, req *v1.BatchStartReq) (r
 func (c *ControllerV1) BatchTaskStatus(ctx context.Context, req *v1.BatchTaskStatusReq) (res *v1.BatchTaskStatusRes, err error) {
 	return service.AppService.BatchTaskStatus(ctx, req)
 }
+
+// BatchInstallByDevices 按设备ID批量安装应用
+func (c *ControllerV1) BatchInstallByDevices(ctx context.Context, req *v1.BatchInstallByDevicesReq) (res *v1.BatchInstallByDevicesRes, err error) {
+	return service.AppService.BatchInstallByDevices(ctx, req)
+}
+
+// BatchUninstallByDevices 按设备ID批量卸载应用
+func (c *ControllerV1) BatchUninstallByDevices(ctx context.Context, req *v1.BatchUninstallByDevicesReq) (res *v1.BatchUninstallByDevicesRes, err error) {
+	return service.AppService.BatchUninstallByDevices(ctx, req)
+}
+
+// BatchStartByDevices 按设备ID批量启动应用
+func (c *ControllerV1) BatchStartByDevices(ctx context.Context, req *v1.BatchStartByDevicesReq) (res *v1.BatchStartByDevicesRes, err error) {
+	return service.AppService.BatchStartByDevices(ctx, req)
+}
+
+// BatchStopByDevices 按设备ID批量停止应用
+func (c *ControllerV1) BatchStopByDevices(ctx context.Context, req *v1.BatchStopByDevicesReq) (res *v1.BatchStopByDevicesRes, err error) {
+	return service.AppService.BatchStopByDevices(ctx, req)
+}

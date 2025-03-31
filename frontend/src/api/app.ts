@@ -201,3 +201,55 @@ export function getBatchTaskStatus(taskId: string) {
     { params: { taskId } }
   );
 }
+
+/** 按设备ID批量安装应用 */
+export function batchInstallByDevices(data: {
+  id: number;
+  deviceIds: string[];
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-install-by-devices",
+    { data }
+  );
+}
+
+/** 按设备ID批量卸载应用 */
+export function batchUninstallByDevices(data: {
+  id: number;
+  deviceIds: string[];
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-uninstall-by-devices",
+    { data }
+  );
+}
+
+/** 按设备ID批量启动应用 */
+export function batchStartByDevices(data: {
+  id: number;
+  deviceIds: string[];
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-start-by-devices",
+    { data }
+  );
+}
+
+/** 按设备ID批量停止应用 */
+export function batchStopByDevices(data: {
+  id: number;
+  deviceIds: string[];
+  maxWorker: number;
+}) {
+  return http.request<BatchOperationResult>(
+    "post",
+    "/api/apps/batch-stop-by-devices",
+    { data }
+  );
+}

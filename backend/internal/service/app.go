@@ -708,3 +708,216 @@ func (s *appService) processBatchStart(task *BatchTask, app *model.App, deviceId
 	// 等待所有任务完成
 	<-doneChan
 }
+
+// BatchInstallByDevices 按设备ID批量安装应用
+func (s *appService) BatchInstallByDevices(ctx context.Context, req *v1.BatchInstallByDevicesReq) (res *v1.BatchInstallByDevicesRes, err error) {
+	// 验证并调整并发数
+	serviceReq := &BatchOperationReq{
+		ID:        uint(req.Id),
+		MaxWorker: req.MaxWorker,
+	}
+	serviceReq.validateAndAdjustMaxWorker(ctx)
+
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 检查APK文件是否存在
+	if !gfile.Exists(app.ApkPath) {
+		return nil, gerror.New("APK文件不存在")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(req.DeviceIds),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(req.DeviceIds)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchInstall(task, app, req.DeviceIds, req.MaxWorker)
+
+	return &v1.BatchInstallByDevicesRes{
+		TaskId:    taskId,
+		Total:     len(req.DeviceIds),
+		DeviceIds: req.DeviceIds,
+	}, nil
+}
+
+// BatchUninstallByDevices 按设备ID批量卸载应用
+func (s *appService) BatchUninstallByDevices(ctx context.Context, req *v1.BatchUninstallByDevicesReq) (res *v1.BatchUninstallByDevicesRes, err error) {
+	// 验证并调整并发数
+	serviceReq := &BatchOperationReq{
+		ID:        uint(req.Id),
+		MaxWorker: req.MaxWorker,
+	}
+	serviceReq.validateAndAdjustMaxWorker(ctx)
+
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(req.DeviceIds),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(req.DeviceIds)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchUninstall(task, app, req.DeviceIds, req.MaxWorker)
+
+	return &v1.BatchUninstallByDevicesRes{
+		TaskId:    taskId,
+		Total:     len(req.DeviceIds),
+		DeviceIds: req.DeviceIds,
+	}, nil
+}
+
+// BatchStartByDevices 按设备ID批量启动应用
+func (s *appService) BatchStartByDevices(ctx context.Context, req *v1.BatchStartByDevicesReq) (res *v1.BatchStartByDevicesRes, err error) {
+	// 验证并调整并发数
+	serviceReq := &BatchOperationReq{
+		ID:        uint(req.Id),
+		MaxWorker: req.MaxWorker,
+	}
+	serviceReq.validateAndAdjustMaxWorker(ctx)
+
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(req.DeviceIds),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(req.DeviceIds)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchStart(task, app, req.DeviceIds, req.MaxWorker)
+
+	return &v1.BatchStartByDevicesRes{
+		TaskId:    taskId,
+		Total:     len(req.DeviceIds),
+		DeviceIds: req.DeviceIds,
+	}, nil
+}
+
+// processBatchStop 处理批量停止任务
+func (s *appService) processBatchStop(task *BatchTask, app *model.App, deviceIds []string, maxWorker int) {
+	task.Status = v1.TaskStatusRunning
+
+	// 创建工作池
+	workerChan := make(chan struct{}, maxWorker)
+	doneChan := make(chan struct{})
+
+	// 启动工作协程
+	for _, deviceId := range deviceIds {
+		workerChan <- struct{}{} // 获取工作槽
+		go func(deviceId string) {
+			defer func() {
+				<-workerChan // 释放工作槽
+				if task.Completed+task.Failed == task.Total {
+					task.Status = v1.TaskStatusComplete
+					close(doneChan)
+				}
+			}()
+
+			// 执行停止
+			output, err := adb.StopApp(deviceId, app.PackageName)
+			result := v1.BatchTaskResult{
+				DeviceId: deviceId,
+				Status:   v1.TaskStatusComplete,
+			}
+
+			if err != nil {
+				result.Status = v1.TaskStatusFailed
+				result.Message = err.Error() + ": " + output
+				task.Failed++
+			} else {
+				result.Message = "停止成功"
+				task.Completed++
+			}
+
+			task.Results = append(task.Results, result)
+		}(deviceId)
+	}
+
+	// 等待所有任务完成
+	<-doneChan
+}
+
+// BatchStopByDevices 按设备ID批量停止应用
+func (s *appService) BatchStopByDevices(ctx context.Context, req *v1.BatchStopByDevicesReq) (res *v1.BatchStopByDevicesRes, err error) {
+	// 验证并调整并发数
+	serviceReq := &BatchOperationReq{
+		ID:        uint(req.Id),
+		MaxWorker: req.MaxWorker,
+	}
+	serviceReq.validateAndAdjustMaxWorker(ctx)
+
+	// 查询应用信息
+	var app *model.App
+	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, gerror.New("应用不存在")
+	}
+
+	// 创建任务
+	taskId := grand.S(32)
+	task := &BatchTask{
+		TaskId:    taskId,
+		Status:    v1.TaskStatusPending,
+		Total:     len(req.DeviceIds),
+		Completed: 0,
+		Failed:    0,
+		Results:   make([]v1.BatchTaskResult, 0, len(req.DeviceIds)),
+	}
+	taskManager.tasks[taskId] = task
+
+	// 启动后台任务
+	go s.processBatchStop(task, app, req.DeviceIds, req.MaxWorker)
+
+	return &v1.BatchStopByDevicesRes{
+		TaskId:    taskId,
+		Total:     len(req.DeviceIds),
+		DeviceIds: req.DeviceIds,
+	}, nil
+}

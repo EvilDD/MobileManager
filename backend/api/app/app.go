@@ -18,4 +18,8 @@ type IAppV1 interface {
 	BatchUninstall(ctx context.Context, req *v1.BatchUninstallReq) (res *v1.BatchUninstallRes, err error)
 	BatchStart(ctx context.Context, req *v1.BatchStartReq) (res *v1.BatchStartRes, err error)
 	BatchTaskStatus(ctx context.Context, req *v1.BatchTaskStatusReq) (res *v1.BatchTaskStatusRes, err error)
+	BatchInstallByDevices(ctx context.Context, req *v1.BatchInstallByDevicesReq) (res *v1.BatchInstallByDevicesRes, err error)
+	BatchUninstallByDevices(ctx context.Context, req *v1.BatchUninstallByDevicesReq) (res *v1.BatchUninstallByDevicesRes, err error)
+	BatchStartByDevices(ctx context.Context, req *v1.BatchStartByDevicesReq) (res *v1.BatchStartByDevicesRes, err error)
+	BatchStopByDevices(ctx context.Context, req *v1.BatchStopByDevicesReq) (res *v1.BatchStopByDevicesRes, err error)
 }
