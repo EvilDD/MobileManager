@@ -162,4 +162,31 @@ export function deleteDevice(id: number) {
     "/api/devices/delete",
     { data: { id } }
   );
+}
+
+/** 批量回到主菜单响应结构 */
+export interface BatchOperationResponse {
+  code: number;
+  message: string;
+  data: {
+    results: Record<string, string>;
+  };
+}
+
+/** 批量回到主菜单 */
+export function batchGoHome(deviceIds: string[]) {
+  return http.request<BatchOperationResponse>(
+    "post",
+    "/api/devices/batch-go-home",
+    { data: { deviceIds } }
+  );
+}
+
+/** 批量清除后台应用 */
+export function batchKillApps(deviceIds: string[]) {
+  return http.request<BatchOperationResponse>(
+    "post",
+    "/api/devices/batch-kill-apps",
+    { data: { deviceIds } }
+  );
 } 

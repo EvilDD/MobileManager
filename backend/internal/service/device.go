@@ -259,11 +259,11 @@ func (s *deviceService) BatchKillApps(ctx context.Context, req *v1.BatchKillApps
 	ch := make(chan struct{}, 50)
 	resultCh := make(chan struct {
 		deviceId string
+		output   string
 		err      error
 	}, len(req.DeviceIds))
 
-	// 获取ADB实例
-	adbInstance := adb.Default()
+	g.Log().Infof(ctx, "开始批量清除后台应用，设备数量: %d", len(req.DeviceIds))
 
 	// 启动goroutine执行操作
 	for _, deviceId := range req.DeviceIds {
@@ -274,11 +274,12 @@ func (s *deviceService) BatchKillApps(ctx context.Context, req *v1.BatchKillApps
 			}()
 
 			// 调用ADB命令清除当前应用
-			_, err := adbInstance.ExecuteCommand(deviceId, "shell", "am", "kill-all")
+			output, err := adb.KillAllBackgroundApps(ctx, deviceId)
 			resultCh <- struct {
 				deviceId string
+				output   string
 				err      error
-			}{deviceId: deviceId, err: err}
+			}{deviceId: deviceId, output: output, err: err}
 		}(deviceId)
 	}
 
@@ -286,11 +287,16 @@ func (s *deviceService) BatchKillApps(ctx context.Context, req *v1.BatchKillApps
 	for i := 0; i < len(req.DeviceIds); i++ {
 		result := <-resultCh
 		if result.err != nil {
+			g.Log().Errorf(ctx, "设备 %s 清除后台应用失败: %v\n调试信息:\n%s",
+				result.deviceId, result.err, result.output)
 			results[result.deviceId] = result.err.Error()
 		} else {
+			g.Log().Infof(ctx, "设备 %s 清除后台应用成功\n调试信息:\n%s",
+				result.deviceId, result.output)
 			results[result.deviceId] = ""
 		}
 	}
 
+	g.Log().Infof(ctx, "批量清除后台应用完成")
 	return results, nil
 }

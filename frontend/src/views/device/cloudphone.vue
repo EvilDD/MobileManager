@@ -12,7 +12,9 @@ import {
 import {
   getDeviceList,
   type Device,
-  type DeviceListResult
+  type DeviceListResult,
+  batchGoHome,
+  batchKillApps
 } from "@/api/device";
 import GroupBadge from "./components/GroupBadge.vue";
 import DeviceStream from "./components/DeviceStream.vue";
@@ -473,6 +475,58 @@ const handleConfirmMoveGroup = async () => {
   selectedGroupId.value = 0;
 };
 
+// 批量回到主菜单
+const handleBatchGoHome = async () => {
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择设备');
+    return;
+  }
+
+  try {
+    const res = await batchGoHome(selectedDevices.value);
+    if (res.code === 0) {
+      ElMessage.success('批量回到主菜单操作已发送');
+      // 检查每个设备的操作结果
+      Object.entries(res.data.results).forEach(([deviceId, error]) => {
+        if (error) {
+          ElMessage.warning(`设备 ${deviceId} 回到主菜单失败: ${error}`);
+        }
+      });
+    } else {
+      ElMessage.error(res.message || '批量回到主菜单失败');
+    }
+  } catch (error) {
+    console.error('批量回到主菜单失败:', error);
+    ElMessage.error('批量回到主菜单失败');
+  }
+};
+
+// 批量清除后台应用
+const handleBatchKillApps = async () => {
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择设备');
+    return;
+  }
+
+  try {
+    const res = await batchKillApps(selectedDevices.value);
+    if (res.code === 0) {
+      ElMessage.success('批量清除后台应用操作已发送');
+      // 检查每个设备的操作结果
+      Object.entries(res.data.results).forEach(([deviceId, error]) => {
+        if (error) {
+          ElMessage.warning(`设备 ${deviceId} 清除后台应用失败: ${error}`);
+        }
+      });
+    } else {
+      ElMessage.error(res.message || '批量清除后台应用失败');
+    }
+  } catch (error) {
+    console.error('批量清除后台应用失败:', error);
+    ElMessage.error('批量清除后台应用失败');
+  }
+};
+
 onMounted(() => {
   getGroups();
   getDevices();
@@ -586,6 +640,22 @@ onMounted(() => {
             @click="() => (showMoveGroupDialog = true)"
           >
             移动分组
+          </el-button>
+
+          <el-button
+            type="primary"
+            :disabled="selectedDevices.length === 0"
+            @click="handleBatchGoHome"
+          >
+            回到主菜单
+          </el-button>
+
+          <el-button
+            type="primary"
+            :disabled="selectedDevices.length === 0"
+            @click="handleBatchKillApps"
+          >
+            清除后台应用
           </el-button>
 
           <el-dropdown @command="changeRefreshInterval" trigger="click">

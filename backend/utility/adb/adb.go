@@ -2,9 +2,12 @@ package adb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 // ADB 工具类接口
@@ -175,6 +178,72 @@ func GoToHome(deviceId string) (string, error) {
 }
 
 // KillAllBackgroundApps 清除所有后台应用
-func KillAllBackgroundApps(deviceId string) (string, error) {
-	return executeDeviceAdbCommand(deviceId, "shell", "am", "kill-all")
+func KillAllBackgroundApps(ctx context.Context, deviceId string) (string, error) {
+	// 获取所有第三方应用包名
+	output, err := executeDeviceAdbCommand(deviceId, "shell", "pm", "list", "packages", "-3")
+	if err != nil {
+		g.Log().Errorf(ctx, "获取应用列表失败: %v", err)
+		return "", fmt.Errorf("获取应用列表失败: %v", err)
+	}
+
+	// 解析包名
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	var errors []string
+	var debugInfo []string
+
+	// Appium相关的包名
+	appiumPackages := map[string]bool{
+		"io.appium.settings":                 true,
+		"io.appium.uiautomator2.server":      true,
+		"io.appium.uiautomator2.server.test": true,
+	}
+
+	debugInfo = append(debugInfo, fmt.Sprintf("设备 %s 开始清理后台应用", deviceId))
+	debugInfo = append(debugInfo, fmt.Sprintf("共发现 %d 个第三方应用", len(lines)))
+
+	// 记录开始日志
+	g.Log().Info(ctx, debugInfo[0], debugInfo[1])
+
+	// 对每个应用执行force-stop
+	for _, line := range lines {
+		if strings.HasPrefix(line, "package:") {
+			packageName := strings.TrimSpace(strings.TrimPrefix(line, "package:"))
+
+			// 跳过Appium相关的包
+			if appiumPackages[packageName] {
+				msg := fmt.Sprintf("跳过Appium相关应用: %s", packageName)
+				debugInfo = append(debugInfo, msg)
+				g.Log().Info(ctx, msg)
+				continue
+			}
+
+			msg := fmt.Sprintf("正在停止应用: %s", packageName)
+			debugInfo = append(debugInfo, msg)
+			g.Log().Info(ctx, msg)
+
+			if _, err := executeDeviceAdbCommand(deviceId, "shell", "am", "force-stop", packageName); err != nil {
+				errMsg := fmt.Sprintf("停止应用 %s 失败: %v", packageName, err)
+				errors = append(errors, errMsg)
+				debugInfo = append(debugInfo, fmt.Sprintf("❌ %s", errMsg))
+				g.Log().Error(ctx, errMsg)
+			} else {
+				msg := fmt.Sprintf("✅ 已停止应用: %s", packageName)
+				debugInfo = append(debugInfo, msg)
+				g.Log().Info(ctx, msg)
+			}
+		}
+	}
+
+	// 生成最终的调试信息
+	summary := fmt.Sprintf("清理完成，成功: %d, 失败: %d", len(lines)-len(errors), len(errors))
+	debugInfo = append(debugInfo, summary)
+	g.Log().Info(ctx, summary)
+
+	debugOutput := strings.Join(debugInfo, "\n")
+
+	if len(errors) > 0 {
+		return debugOutput, fmt.Errorf(strings.Join(errors, "; "))
+	}
+
+	return debugOutput, nil
 }
