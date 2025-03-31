@@ -35,3 +35,21 @@ func (c *ControllerV1) Delete(ctx context.Context, req *v1.DeleteReq) (res *v1.D
 	}
 	return &v1.DeleteRes{}, nil
 }
+
+// BatchGoHome 批量回到主菜单
+func (c *ControllerV1) BatchGoHome(ctx context.Context, req *v1.BatchGoHomeReq) (res *v1.BatchGoHomeRes, err error) {
+	results, err := service.DeviceService.BatchGoHome(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.BatchGoHomeRes{Results: results}, nil
+}
+
+// BatchKillApps 批量清除当前应用
+func (c *ControllerV1) BatchKillApps(ctx context.Context, req *v1.BatchKillAppsReq) (res *v1.BatchKillAppsRes, err error) {
+	results, err := service.DeviceService.BatchKillApps(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.BatchKillAppsRes{Results: results}, nil
+}

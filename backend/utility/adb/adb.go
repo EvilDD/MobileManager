@@ -168,3 +168,13 @@ func StopApp(deviceId, packageName string) (string, error) {
 func ClearAppData(deviceId, packageName string) (string, error) {
 	return executeDeviceAdbCommand(deviceId, "shell", "pm", "clear", packageName)
 }
+
+// GoToHome 回到主菜单
+func GoToHome(deviceId string) (string, error) {
+	return executeDeviceAdbCommand(deviceId, "shell", "input", "keyevent", "3")
+}
+
+// KillAllBackgroundApps 清除所有后台应用
+func KillAllBackgroundApps(deviceId string) (string, error) {
+	return executeDeviceAdbCommand(deviceId, "shell", "am", "kill-all")
+}

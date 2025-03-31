@@ -70,3 +70,23 @@ type Device struct {
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
+
+// BatchGoHomeReq 批量回到主菜单请求
+type BatchGoHomeReq struct {
+	g.Meta    `path:"/devices/batch-go-home" tags:"设备管理" method:"post" summary:"批量回到主菜单"`
+	DeviceIds []string `json:"deviceIds" v:"required#请选择设备|length:1,50#设备数量必须在1-50之间" dc:"设备ID列表，最多50个"`
+}
+
+type BatchGoHomeRes struct {
+	Results map[string]string `json:"results" dc:"操作结果，key为设备ID，value为错误信息（成功为空）"`
+}
+
+// BatchKillAppsReq 批量清除当前应用请求
+type BatchKillAppsReq struct {
+	g.Meta    `path:"/devices/batch-kill-apps" tags:"设备管理" method:"post" summary:"批量清除当前应用"`
+	DeviceIds []string `json:"deviceIds" v:"required#请选择设备|length:1,50#设备数量必须在1-50之间" dc:"设备ID列表，最多50个"`
+}
+
+type BatchKillAppsRes struct {
+	Results map[string]string `json:"results" dc:"操作结果，key为设备ID，value为错误信息（成功为空）"`
+}

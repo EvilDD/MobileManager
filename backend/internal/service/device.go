@@ -6,6 +6,7 @@ import (
 	v1 "backend/api/device/v1"
 	"backend/internal/dao"
 	"backend/internal/model"
+	"backend/utility/adb"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -204,4 +205,92 @@ func (s *deviceService) Delete(ctx context.Context, req *v1.DeleteReq) error {
 
 	_, err = dao.Device.Ctx(ctx).Where("id", req.Id).Delete()
 	return err
+}
+
+// BatchGoHome 批量回到主菜单
+func (s *deviceService) BatchGoHome(ctx context.Context, req *v1.BatchGoHomeReq) (map[string]string, error) {
+	results := make(map[string]string)
+
+	// 并发执行，最多50个并发
+	ch := make(chan struct{}, 50)
+	resultCh := make(chan struct {
+		deviceId string
+		err      error
+	}, len(req.DeviceIds))
+
+	// 获取ADB实例
+	adbInstance := adb.Default()
+
+	// 启动goroutine执行操作
+	for _, deviceId := range req.DeviceIds {
+		ch <- struct{}{} // 获取信号量
+		go func(deviceId string) {
+			defer func() {
+				<-ch // 释放信号量
+			}()
+
+			// 调用ADB命令回到主菜单
+			_, err := adbInstance.ExecuteCommand(deviceId, "shell", "input", "keyevent", "3")
+			resultCh <- struct {
+				deviceId string
+				err      error
+			}{deviceId: deviceId, err: err}
+		}(deviceId)
+	}
+
+	// 收集结果
+	for i := 0; i < len(req.DeviceIds); i++ {
+		result := <-resultCh
+		if result.err != nil {
+			results[result.deviceId] = result.err.Error()
+		} else {
+			results[result.deviceId] = ""
+		}
+	}
+
+	return results, nil
+}
+
+// BatchKillApps 批量清除当前应用
+func (s *deviceService) BatchKillApps(ctx context.Context, req *v1.BatchKillAppsReq) (map[string]string, error) {
+	results := make(map[string]string)
+
+	// 并发执行，最多50个并发
+	ch := make(chan struct{}, 50)
+	resultCh := make(chan struct {
+		deviceId string
+		err      error
+	}, len(req.DeviceIds))
+
+	// 获取ADB实例
+	adbInstance := adb.Default()
+
+	// 启动goroutine执行操作
+	for _, deviceId := range req.DeviceIds {
+		ch <- struct{}{} // 获取信号量
+		go func(deviceId string) {
+			defer func() {
+				<-ch // 释放信号量
+			}()
+
+			// 调用ADB命令清除当前应用
+			_, err := adbInstance.ExecuteCommand(deviceId, "shell", "am", "kill-all")
+			resultCh <- struct {
+				deviceId string
+				err      error
+			}{deviceId: deviceId, err: err}
+		}(deviceId)
+	}
+
+	// 收集结果
+	for i := 0; i < len(req.DeviceIds); i++ {
+		result := <-resultCh
+		if result.err != nil {
+			results[result.deviceId] = result.err.Error()
+		} else {
+			results[result.deviceId] = ""
+		}
+	}
+
+	return results, nil
 }
