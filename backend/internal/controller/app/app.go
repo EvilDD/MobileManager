@@ -111,17 +111,35 @@ func (c *ControllerV1) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.U
 
 // BatchInstall 批量安装应用
 func (c *ControllerV1) BatchInstall(ctx context.Context, req *v1.BatchInstallReq) (res *v1.BatchInstallRes, err error) {
-	return service.AppService.BatchInstall(ctx, req)
+	// 转换请求参数
+	serviceReq := &service.BatchOperationReq{
+		ID:        uint(req.Id),
+		GroupID:   uint(req.GroupId),
+		MaxWorker: req.MaxWorker,
+	}
+	return service.AppService.BatchInstall(ctx, serviceReq)
 }
 
 // BatchUninstall 批量卸载应用
 func (c *ControllerV1) BatchUninstall(ctx context.Context, req *v1.BatchUninstallReq) (res *v1.BatchUninstallRes, err error) {
-	return service.AppService.BatchUninstall(ctx, req)
+	// 转换请求参数
+	serviceReq := &service.BatchOperationReq{
+		ID:        uint(req.Id),
+		GroupID:   uint(req.GroupId),
+		MaxWorker: req.MaxWorker,
+	}
+	return service.AppService.BatchUninstall(ctx, serviceReq)
 }
 
 // BatchStart 批量启动应用
 func (c *ControllerV1) BatchStart(ctx context.Context, req *v1.BatchStartReq) (res *v1.BatchStartRes, err error) {
-	return service.AppService.BatchStart(ctx, req)
+	// 转换请求参数
+	serviceReq := &service.BatchOperationReq{
+		ID:        uint(req.Id),
+		GroupID:   uint(req.GroupId),
+		MaxWorker: req.MaxWorker,
+	}
+	return service.AppService.BatchStart(ctx, serviceReq)
 }
 
 // BatchTaskStatus 查询批量操作任务状态

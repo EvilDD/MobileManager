@@ -351,11 +351,41 @@ type BatchTask struct {
 	Results   []v1.BatchTaskResult
 }
 
+// BatchOperationReq 批量操作请求
+type BatchOperationReq struct {
+	ID        uint `json:"id"`
+	GroupID   uint `json:"groupId"`
+	MaxWorker int  `json:"maxWorker"`
+}
+
+// 验证并调整并发数
+func (req *BatchOperationReq) validateAndAdjustMaxWorker(ctx context.Context) {
+	// 从配置中获取最大并发数限制
+	maxAllowedWorker := g.Cfg().MustGet(ctx, "batch.maxWorker").Int()
+	if maxAllowedWorker <= 0 {
+		maxAllowedWorker = 20 // 默认值
+	}
+
+	// 如果请求的并发数超过限制，则使用最大允许值
+	if req.MaxWorker > maxAllowedWorker {
+		g.Log().Noticef(ctx, "请求的并发数 %d 超过系统限制 %d，已自动调整", req.MaxWorker, maxAllowedWorker)
+		req.MaxWorker = maxAllowedWorker
+	}
+
+	// 确保最小并发数为 1
+	if req.MaxWorker < 1 {
+		req.MaxWorker = 1
+	}
+}
+
 // BatchInstall 批量安装应用
-func (s *appService) BatchInstall(ctx context.Context, req *v1.BatchInstallReq) (res *v1.BatchInstallRes, err error) {
+func (s *appService) BatchInstall(ctx context.Context, req *BatchOperationReq) (res *v1.BatchInstallRes, err error) {
+	// 验证并调整并发数
+	req.validateAndAdjustMaxWorker(ctx)
+
 	// 查询应用信息
 	var app *model.App
-	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	err = dao.App.Ctx(ctx).Where("id", req.ID).Scan(&app)
 	if err != nil {
 		return nil, err
 	}
@@ -368,14 +398,21 @@ func (s *appService) BatchInstall(ctx context.Context, req *v1.BatchInstallReq) 
 		return nil, gerror.New("APK文件不存在")
 	}
 
-	// 获取分组下的设备列表
+	// 获取分组设备列表
 	var devices []*model.Device
-	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupId).Scan(&devices)
+	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupID).Scan(&devices)
 	if err != nil {
 		return nil, err
 	}
+
+	// 如果分组下没有设备，返回空结果
 	if len(devices) == 0 {
-		return nil, gerror.New("分组下没有设备")
+		taskId := grand.S(32)
+		return &v1.BatchInstallRes{
+			TaskId:    taskId,
+			Total:     0,
+			DeviceIds: []string{},
+		}, nil
 	}
 
 	// 创建任务
@@ -406,10 +443,13 @@ func (s *appService) BatchInstall(ctx context.Context, req *v1.BatchInstallReq) 
 }
 
 // BatchUninstall 批量卸载应用
-func (s *appService) BatchUninstall(ctx context.Context, req *v1.BatchUninstallReq) (res *v1.BatchUninstallRes, err error) {
+func (s *appService) BatchUninstall(ctx context.Context, req *BatchOperationReq) (res *v1.BatchUninstallRes, err error) {
+	// 验证并调整并发数
+	req.validateAndAdjustMaxWorker(ctx)
+
 	// 查询应用信息
 	var app *model.App
-	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	err = dao.App.Ctx(ctx).Where("id", req.ID).Scan(&app)
 	if err != nil {
 		return nil, err
 	}
@@ -417,14 +457,21 @@ func (s *appService) BatchUninstall(ctx context.Context, req *v1.BatchUninstallR
 		return nil, gerror.New("应用不存在")
 	}
 
-	// 获取分组下的设备列表
+	// 获取分组设备列表
 	var devices []*model.Device
-	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupId).Scan(&devices)
+	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupID).Scan(&devices)
 	if err != nil {
 		return nil, err
 	}
+
+	// 如果分组下没有设备，返回空结果
 	if len(devices) == 0 {
-		return nil, gerror.New("分组下没有设备")
+		taskId := grand.S(32)
+		return &v1.BatchUninstallRes{
+			TaskId:    taskId,
+			Total:     0,
+			DeviceIds: []string{},
+		}, nil
 	}
 
 	// 创建任务
@@ -455,10 +502,13 @@ func (s *appService) BatchUninstall(ctx context.Context, req *v1.BatchUninstallR
 }
 
 // BatchStart 批量启动应用
-func (s *appService) BatchStart(ctx context.Context, req *v1.BatchStartReq) (res *v1.BatchStartRes, err error) {
+func (s *appService) BatchStart(ctx context.Context, req *BatchOperationReq) (res *v1.BatchStartRes, err error) {
+	// 验证并调整并发数
+	req.validateAndAdjustMaxWorker(ctx)
+
 	// 查询应用信息
 	var app *model.App
-	err = dao.App.Ctx(ctx).Where("id", req.Id).Scan(&app)
+	err = dao.App.Ctx(ctx).Where("id", req.ID).Scan(&app)
 	if err != nil {
 		return nil, err
 	}
@@ -466,14 +516,21 @@ func (s *appService) BatchStart(ctx context.Context, req *v1.BatchStartReq) (res
 		return nil, gerror.New("应用不存在")
 	}
 
-	// 获取分组下的设备列表
+	// 获取分组设备列表
 	var devices []*model.Device
-	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupId).Scan(&devices)
+	err = dao.Device.Ctx(ctx).Where("group_id", req.GroupID).Scan(&devices)
 	if err != nil {
 		return nil, err
 	}
+
+	// 如果分组下没有设备，返回空结果
 	if len(devices) == 0 {
-		return nil, gerror.New("分组下没有设备")
+		taskId := grand.S(32)
+		return &v1.BatchStartRes{
+			TaskId:    taskId,
+			Total:     0,
+			DeviceIds: []string{},
+		}, nil
 	}
 
 	// 创建任务

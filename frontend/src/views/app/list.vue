@@ -226,10 +226,13 @@
           <el-input-number 
             v-model="groupForm.maxWorker" 
             :min="1" 
-            :max="50" 
+            :max="50"
             placeholder="请输入并发数"
             style="width: 100%"
           />
+          <div class="form-tip">
+            并发数表示同时处理的设备数量，建议设置在 1-20 之间，过大的并发数会被服务器自动调整
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -760,7 +763,7 @@ const openGroupDialog = (action: 'install' | 'uninstall' | 'start', app: App) =>
   currentApp.value = app;
   groupForm.value = {
     groupId: 0,
-    maxWorker: 10
+    maxWorker: 50
   };
   groupDialogVisible.value = true;
   fetchGroupList();
@@ -967,5 +970,12 @@ onUnmounted(() => {
 .task-results {
   max-height: 400px;
   overflow-y: auto;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style> 
