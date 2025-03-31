@@ -5,7 +5,7 @@
         <div class="card-header">
           <span>应用列表</span>
           <div>
-            <el-button type="primary" @click="openAppDialog(null)">添加应用</el-button>
+            <!-- <el-button type="primary" @click="openAppDialog(null)">添加应用</el-button> -->
             <el-button type="success" @click="(e: MouseEvent) => openUploadDialog()">导入应用</el-button>
           </div>
         </div>
