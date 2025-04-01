@@ -15,7 +15,7 @@ import (
 	v1 "backend/api/screenshot/v1"
 	"backend/utility/adb"
 
-	"github.com/gogf/gf/v2/os/glog"
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 // 缓存项结构
@@ -79,30 +79,30 @@ func (s *screenshotService) cleanExpiredCache() {
 }
 
 // 获取缓存的截图
-func (s *screenshotService) getCachedScreenshot(deviceID string, quality int) *screenshotCacheItem {
+func (s *screenshotService) getCachedScreenshot(ctx context.Context, deviceID string, quality int) *screenshotCacheItem {
 	s.cacheMux.RLock()
 	defer s.cacheMux.RUnlock()
 
 	if item, exists := s.cache[deviceID]; exists {
 		timeSinceCache := time.Since(item.timestamp)
 		if timeSinceCache <= s.ttl && item.quality == quality {
-			// glog.Info(context.Background(), fmt.Sprintf("设备[%s]命中缓存, 缓存时间: %.2f秒", deviceID, timeSinceCache.Seconds()))
+			// g.Log().Info(ctx, fmt.Sprintf("设备[%s]命中缓存, 缓存时间: %.2f秒", deviceID, timeSinceCache.Seconds()))
 			return item
 		}
 		if timeSinceCache > s.ttl {
-			// glog.Info(context.Background(), fmt.Sprintf("设备[%s]缓存已过期, 缓存时间: %.2f秒", deviceID, timeSinceCache.Seconds()))
+			// g.Log().Info(ctx, fmt.Sprintf("设备[%s]缓存已过期, 缓存时间: %.2f秒", deviceID, timeSinceCache.Seconds()))
 		}
 		if item.quality != quality {
-			// glog.Info(context.Background(), fmt.Sprintf("设备[%s]缓存质量不匹配, 缓存质量: %d, 请求质量: %d", deviceID, item.quality, quality))
+			// g.Log().Info(ctx, fmt.Sprintf("设备[%s]缓存质量不匹配, 缓存质量: %d, 请求质量: %d", deviceID, item.quality, quality))
 		}
 	} else {
-		// glog.Info(context.Background(), fmt.Sprintf("设备[%s]无缓存", deviceID))
+		// g.Log().Info(ctx, fmt.Sprintf("设备[%s]无缓存", deviceID))
 	}
 	return nil
 }
 
 // 设置缓存
-func (s *screenshotService) setCacheScreenshot(deviceID string, imageData string, quality int) {
+func (s *screenshotService) setCacheScreenshot(ctx context.Context, deviceID string, imageData string, quality int) {
 	s.cacheMux.Lock()
 	defer s.cacheMux.Unlock()
 
@@ -111,22 +111,22 @@ func (s *screenshotService) setCacheScreenshot(deviceID string, imageData string
 		timestamp: time.Now(),
 		quality:   quality,
 	}
-	// glog.Info(context.Background(), fmt.Sprintf("设备[%s]设置新缓存, 质量: %d", deviceID, quality))
+	// g.Log().Info(ctx, fmt.Sprintf("设备[%s]设置新缓存, 质量: %d", deviceID, quality))
 }
 
 // 获取或创建进行中的请求标记
-func (s *screenshotService) getOrCreateInProgress(deviceID string) (chan struct{}, bool) {
+func (s *screenshotService) getOrCreateInProgress(ctx context.Context, deviceID string) (chan struct{}, bool) {
 	s.inProgressMux.Lock()
 	defer s.inProgressMux.Unlock()
 
 	if ch, exists := s.inProgress[deviceID]; exists {
-		glog.Info(context.Background(), fmt.Sprintf("设备[%s]已有请求在处理中, 等待复用", deviceID))
+		// g.Log().Info(ctx, fmt.Sprintf("设备[%s]已有请求在处理中, 等待复用", deviceID))
 		return ch, false
 	}
 
 	ch := make(chan struct{})
 	s.inProgress[deviceID] = ch
-	glog.Info(context.Background(), fmt.Sprintf("设备[%s]开始新的截图请求", deviceID))
+	// g.Log().Info(ctx, fmt.Sprintf("设备[%s]开始新的截图请求", deviceID))
 	return ch, true
 }
 
@@ -150,7 +150,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 
 	startTime := time.Now()
 	defer func() {
-		glog.Info(ctx, fmt.Sprintf("设备[%s]截图请求完成, 耗时: %.2f毫秒, 成功: %v",
+		g.Log().Debug(ctx, fmt.Sprintf("设备[%s]截图请求完成, 耗时: %.2f毫秒, 成功: %v",
 			deviceId, float64(time.Since(startTime).Milliseconds()), res.Success))
 	}()
 
@@ -162,20 +162,20 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	}
 
 	// 尝试从缓存获取
-	if cached := s.getCachedScreenshot(deviceId, quality); cached != nil {
+	if cached := s.getCachedScreenshot(ctx, deviceId, quality); cached != nil {
 		res.Success = true
 		res.ImageData = cached.imageData
 		return res, nil
 	}
 
 	// 检查是否有正在进行的请求
-	ch, isFirst := s.getOrCreateInProgress(deviceId)
+	ch, isFirst := s.getOrCreateInProgress(ctx, deviceId)
 	if !isFirst {
 		// 等待已有请求完成
 		select {
 		case <-ch:
 			// 其他请求已完成，尝试从缓存获取
-			if cached := s.getCachedScreenshot(deviceId, quality); cached != nil {
+			if cached := s.getCachedScreenshot(ctx, deviceId, quality); cached != nil {
 				res.Success = true
 				res.ImageData = cached.imageData
 				return res, nil
@@ -254,7 +254,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		base64.StdEncoding.EncodeToString(jpegBuf.Bytes()))
 
 	// 8. 设置缓存
-	s.setCacheScreenshot(deviceId, imageData, quality)
+	s.setCacheScreenshot(ctx, deviceId, imageData, quality)
 
 	res.Success = true
 	res.ImageData = imageData
