@@ -244,6 +244,7 @@ const getDevices = async () => {
 // 切换分组
 const changeGroup = (groupId: number) => {
   activeGroup.value = groupId;
+  selectedDevices.value = []; // 清除已选中的设备列表
   getDevices();
 };
 
