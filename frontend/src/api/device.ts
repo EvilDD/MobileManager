@@ -111,11 +111,15 @@ interface ScreenshotRes {
 /** 获取设备截图 
  * @param data.deviceId 设备ID
  * @param data.quality 图片质量，1-100之间的整数，默认80
+ * @param data.scale 图片缩放比例，0.1-1之间的小数，默认1.0
+ * @param data.format 图片格式，'webp'或'jpeg'，默认'webp'
  * @returns 截图响应
  */
 export function captureDeviceScreenshot(data: {
   deviceId: string;
   quality?: number;
+  scale?: number;
+  format?: 'webp' | 'jpeg';
 }) {
   return http.request<ScreenshotBackendResponse>(
     "post",

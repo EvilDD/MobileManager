@@ -7,8 +7,10 @@ import (
 // ScreenshotReq 截图请求
 type ScreenshotReq struct {
 	g.Meta   `path:"/screenshot/capture" tags:"截图管理" method:"post" summary:"设备截图"`
-	DeviceId string `json:"deviceId" v:"required#设备ID不能为空" dc:"设备ID"`
-	Quality  int    `json:"quality" v:"between:1,100#图片质量必须在1-100之间" dc:"图片质量(1-100)" d:"80"`
+	DeviceId string  `json:"deviceId" v:"required#设备ID不能为空" dc:"设备ID"`
+	Quality  int     `json:"quality" v:"between:1,100#图片质量必须在1-100之间" dc:"图片质量(1-100)" d:"80"`
+	Scale    float64 `json:"scale" v:"between:0.1,1#图片缩放比例 0.1-1" dc:"图片缩放比例"`
+	Format   string  `json:"format" v:"in:webp,jpeg#图片格式只能是webp或jpeg" dc:"图片格式"`
 }
 
 // // 打印请求参数

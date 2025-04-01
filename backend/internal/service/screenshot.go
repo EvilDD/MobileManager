@@ -3,8 +3,11 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"image"
 	"image/jpeg"
 	"image/png"
 	"os"
@@ -15,14 +18,19 @@ import (
 	v1 "backend/api/screenshot/v1"
 	"backend/utility/adb"
 
+	"github.com/chai2010/webp"
 	"github.com/gogf/gf/v2/frame/g"
+	"golang.org/x/image/draw"
 )
 
 // 缓存项结构
 type screenshotCacheItem struct {
-	imageData string    // Base64编码的图片数据
-	timestamp time.Time // 缓存时间
-	quality   int       // 图片质量
+	imageData   string    // Base64编码的图片数据
+	timestamp   time.Time // 缓存时间
+	quality     int       // 图片质量
+	scale       float64   // 图片缩放比例
+	format      string    // 图片格式
+	contentHash string    // 内容hash，用于判断图片是否变化
 }
 
 type IScreenshot interface {
@@ -79,13 +87,16 @@ func (s *screenshotService) cleanExpiredCache() {
 }
 
 // 获取缓存的截图
-func (s *screenshotService) getCachedScreenshot(ctx context.Context, deviceID string, quality int) *screenshotCacheItem {
+func (s *screenshotService) getCachedScreenshot(ctx context.Context, deviceID string, quality int, scale float64, format string) *screenshotCacheItem {
 	s.cacheMux.RLock()
 	defer s.cacheMux.RUnlock()
 
 	if item, exists := s.cache[deviceID]; exists {
 		timeSinceCache := time.Since(item.timestamp)
-		if timeSinceCache <= s.ttl && item.quality == quality {
+		if timeSinceCache <= s.ttl &&
+			item.quality == quality &&
+			item.scale == scale &&
+			item.format == format {
 			// g.Log().Info(ctx, fmt.Sprintf("设备[%s]命中缓存, 缓存时间: %.2f秒", deviceID, timeSinceCache.Seconds()))
 			return item
 		}
@@ -102,14 +113,17 @@ func (s *screenshotService) getCachedScreenshot(ctx context.Context, deviceID st
 }
 
 // 设置缓存
-func (s *screenshotService) setCacheScreenshot(ctx context.Context, deviceID string, imageData string, quality int) {
+func (s *screenshotService) setCacheScreenshot(ctx context.Context, deviceID string, imageData string, quality int, scale float64, format string, contentHash string) {
 	s.cacheMux.Lock()
 	defer s.cacheMux.Unlock()
 
 	s.cache[deviceID] = &screenshotCacheItem{
-		imageData: imageData,
-		timestamp: time.Now(),
-		quality:   quality,
+		imageData:   imageData,
+		timestamp:   time.Now(),
+		quality:     quality,
+		scale:       scale,
+		format:      format,
+		contentHash: contentHash,
 	}
 	// g.Log().Info(ctx, fmt.Sprintf("设备[%s]设置新缓存, 质量: %d", deviceID, quality))
 }
@@ -141,11 +155,46 @@ func (s *screenshotService) removeInProgress(deviceID string) {
 	}
 }
 
+// 图片缩放函数
+func resizeImage(img image.Image, scale float64) image.Image {
+	if scale >= 1.0 {
+		return img
+	}
+	bounds := img.Bounds()
+	w := int(float64(bounds.Dx()) * scale)
+	h := int(float64(bounds.Dy()) * scale)
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.NearestNeighbor.Scale(dst, dst.Rect, img, img.Bounds(), draw.Over, nil)
+	return dst
+}
+
+// 计算图片内容hash
+func calculateImageHash(img image.Image) string {
+	bounds := img.Bounds()
+	hasher := md5.New()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			hasher.Write([]byte{byte(r), byte(g), byte(b), byte(a)})
+		}
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
 func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) (res *v1.ScreenshotRes, err error) {
 	deviceId := req.DeviceId
 	quality := req.Quality
+	scale := req.Scale
+	format := req.Format
+
 	if quality == 0 {
 		quality = 80 // 默认质量
+	}
+	if scale == 0 {
+		scale = 1.0 // 默认不缩放
+	}
+	if format == "" {
+		format = "webp" // 默认使用WebP格式
 	}
 
 	startTime := time.Now()
@@ -162,7 +211,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	}
 
 	// 尝试从缓存获取
-	if cached := s.getCachedScreenshot(ctx, deviceId, quality); cached != nil {
+	if cached := s.getCachedScreenshot(ctx, deviceId, quality, scale, format); cached != nil {
 		res.Success = true
 		res.ImageData = cached.imageData
 		return res, nil
@@ -175,7 +224,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		select {
 		case <-ch:
 			// 其他请求已完成，尝试从缓存获取
-			if cached := s.getCachedScreenshot(ctx, deviceId, quality); cached != nil {
+			if cached := s.getCachedScreenshot(ctx, deviceId, quality, scale, format); cached != nil {
 				res.Success = true
 				res.ImageData = cached.imageData
 				return res, nil
@@ -236,31 +285,61 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		return
 	}
 
-	// 6. 压缩为JPEG并编码为Base64
-	var jpegBuf bytes.Buffer
-	err = jpeg.Encode(&jpegBuf, img, &jpeg.Options{
-		Quality: quality,
-	})
+	// 计算原始图片hash
+	contentHash := calculateImageHash(img)
+
+	// 检查是否需要更新缓存
+	if cached := s.getCachedScreenshot(ctx, deviceId, quality, scale, format); cached != nil {
+		if cached.contentHash == contentHash {
+			res.Success = true
+			res.ImageData = cached.imageData
+			return res, nil
+		}
+	}
+
+	// 6. 缩放图片
+	if scale < 1.0 {
+		img = resizeImage(img, scale)
+	}
+
+	// 7. 根据格式进行编码
+	var buf bytes.Buffer
+	switch format {
+	case "webp":
+		err = webp.Encode(&buf, img, &webp.Options{
+			Lossless: false,
+			Quality:  float32(quality),
+		})
+	case "jpeg":
+		err = jpeg.Encode(&buf, img, &jpeg.Options{
+			Quality: quality,
+		})
+	default:
+		err = fmt.Errorf("不支持的图片格式: %s", format)
+	}
+
 	if err != nil {
-		res.Error = fmt.Sprintf("JPEG编码失败: %v", err)
+		res.Error = fmt.Sprintf("图片编码失败: %v", err)
 		// 清理临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return
 	}
 
-	// 7. 转换为Base64
-	imageData := fmt.Sprintf("data:image/jpeg;base64,%s",
-		base64.StdEncoding.EncodeToString(jpegBuf.Bytes()))
+	// 8. Base64编码
+	imageData := fmt.Sprintf("data:image/%s;base64,%s",
+		format,
+		base64.StdEncoding.EncodeToString(buf.Bytes()))
 
-	// 8. 设置缓存
-	s.setCacheScreenshot(ctx, deviceId, imageData, quality)
+	// 9. 更新缓存
+	s.setCacheScreenshot(ctx, deviceId, imageData, quality, scale, format, contentHash)
 
 	res.Success = true
 	res.ImageData = imageData
 
-	// 9. 清理临时文件
+	// 10. 清理临时文件
 	adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 	os.Remove(tempFileName)
-	return res, nil
+
+	return
 }
