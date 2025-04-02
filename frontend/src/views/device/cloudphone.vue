@@ -1419,8 +1419,8 @@ onMounted(() => {
 .phone-preview {
   position: relative;
   width: 100%;
-  padding-top: 177.78%; /* 保持 360:640 的宽高比 */
-  background-color: #f5f7fa; /* 改为浅灰色背景 */
+  padding-top: 177.78%; /* 保持 16:9 的宽高比作为容器基准 */
+  background-color: #f5f7fa;
   overflow: hidden;
   flex-grow: 1;
 }
@@ -1431,10 +1431,37 @@ onMounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: contain; /* 确保图片完整显示且保持比例 */
 }
 
-/* 离线设备的样式 */
+/* 修改截图容器样式，使其可点击并自适应 */
+.phone-preview :deep(.device-screenshot-container) {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phone-preview :deep(.screenshot-loading) {
+  display: none !important;
+}
+
+.phone-preview :deep(.screenshot-image) {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain; /* 保持图片比例 */
+  transition: transform 0.3s;
+}
+
+/* 离线设备的样式适配 */
 .offline-placeholder {
   position: absolute;
   top: 0;
@@ -1448,43 +1475,10 @@ onMounted(() => {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-.offline-text {
-  position: absolute;
-  bottom: 20px;
-  left: 0;
-  width: 100%;
-  text-align: center;
-  color: #909399;
-  background-color: rgba(0, 0, 0, 0.5);
-  padding: 4px 0;
-  font-size: 12px;
-  color: #fff;
-}
-
-/* 修改截图容器样式，使其可点击 */
-.phone-preview :deep(.device-screenshot-container) {
-  position: absolute !important;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: transparent;
-  cursor: pointer;
-}
-
-.phone-preview :deep(.screenshot-loading) {
-  display: none !important; /* 完全隐藏加载提示 */
-}
-
-.phone-preview :deep(.screenshot-image) {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s;
-}
-
-.phone-preview :deep(.screenshot-image:hover) {
-  transform: scale(1.05);
+.offline-placeholder img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .phone-actions {
