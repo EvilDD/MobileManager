@@ -62,10 +62,13 @@ type screenshotService struct {
 }
 
 func newScreenshotService() *screenshotService {
+	// 从配置文件获取缓存过期时间，默认为5秒
+	cacheTTL := g.Cfg().MustGet(context.Background(), "screenshot.cacheTTL", 5).Int()
+
 	s := &screenshotService{
 		cache:      make(map[string]*screenshotCacheItem),
 		inProgress: make(map[string]chan struct{}),
-		ttl:        time.Second * 5, // 增加到5秒的缓存过期时间
+		ttl:        time.Duration(cacheTTL) * time.Second,
 	}
 	// 启动定期清理过期缓存的goroutine
 	go s.cleanExpiredCache()
@@ -182,20 +185,90 @@ func calculateImageHash(img image.Image) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
+// 判断图片是否为横屏
+// 如果宽度大于高度，则认为是横屏
+func isLandscape(img image.Image) bool {
+	bounds := img.Bounds()
+	return bounds.Dx() > bounds.Dy()
+}
+
+// 顺时针旋转图片90度
+func rotateImage90CW(src image.Image) image.Image {
+	bounds := src.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	dst := image.NewRGBA(image.Rect(0, 0, h, w))
+
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			dst.Set(h-y-1, x, src.At(x, y))
+		}
+	}
+	return dst
+}
+
+// 处理图片（包含缩放和旋转）
+func processImage(img image.Image, scale float64, autoRotate bool) image.Image {
+	// 先进行缩放
+	if scale < 1.0 {
+		img = resizeImage(img, scale)
+	}
+
+	// 如果需要自动旋转且是横屏
+	if autoRotate && isLandscape(img) {
+		img = rotateImage90CW(img)
+	}
+
+	return img
+}
+
+// 编码图片为指定格式
+func encodeImage(img image.Image, format string, quality int) ([]byte, error) {
+	var buf bytes.Buffer
+	var err error
+
+	switch format {
+	case "webp":
+		err = webp.Encode(&buf, img, &webp.Options{
+			Lossless: false,
+			Quality:  float32(quality),
+		})
+	case "jpeg":
+		err = jpeg.Encode(&buf, img, &jpeg.Options{
+			Quality: quality,
+		})
+	default:
+		return nil, fmt.Errorf("不支持的图片格式: %s", format)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) (res *v1.ScreenshotRes, err error) {
 	deviceId := req.DeviceId
-	quality := req.Quality
-	scale := req.Scale
-	format := req.Format
 
+	// 从配置文件获取默认值
+	defaultQuality := g.Cfg().MustGet(ctx, "screenshot.quality", 80).Int()
+	defaultScale := g.Cfg().MustGet(ctx, "screenshot.scale", 1.0).Float64()
+	defaultFormat := g.Cfg().MustGet(ctx, "screenshot.format", "webp").String()
+
+	// 使用请求参数或默认值
+	quality := req.Quality
 	if quality == 0 {
-		quality = 80 // 默认质量
+		quality = defaultQuality
 	}
+
+	scale := req.Scale
 	if scale == 0 {
-		scale = 1.0 // 默认不缩放
+		scale = defaultScale
 	}
+
+	format := req.Format
 	if format == "" {
-		format = "webp" // 默认使用WebP格式
+		format = defaultFormat
 	}
 
 	startTime := time.Now()
@@ -221,10 +294,8 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	// 检查是否有正在进行的请求
 	ch, isFirst := s.getOrCreateInProgress(ctx, deviceId)
 	if !isFirst {
-		// 等待已有请求完成
 		select {
 		case <-ch:
-			// 其他请求已完成，尝试从缓存获取
 			if cached := s.getCachedScreenshot(ctx, deviceId, quality, scale, format); cached != nil {
 				res.Success = true
 				res.ImageData = cached.imageData
@@ -235,22 +306,16 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		}
 	}
 
-	// 确保在函数返回时移除进行中标记
 	defer s.removeInProgress(deviceId)
 
-	// 获取 ADB 工具实例
 	adbTool := adb.Default()
 
-	// 1. 连接设备
 	if err = adbTool.Connect(deviceId); err != nil {
 		res.Error = fmt.Sprintf("连接设备失败: %v", err)
 		return res, nil
 	}
 
-	// 生成唯一的临时文件名
 	timestamp := time.Now().UnixNano()
-
-	// 确保资源目录存在
 	screenshotDir := "resource/screenshots"
 	if err := os.MkdirAll(screenshotDir, 0755); err != nil {
 		res.Error = fmt.Sprintf("创建截图目录失败: %v", err)
@@ -260,44 +325,35 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	tempFileName := filepath.Join(screenshotDir, fmt.Sprintf("screenshot_%s_%d.png", strings.Replace(deviceId, ":", "_", -1), timestamp))
 	deviceTempPath := fmt.Sprintf("/data/local/tmp/%s", filepath.Base(tempFileName))
 
-	// 2. 在设备上执行截图命令
 	if err = adbTool.Screencap(deviceId, deviceTempPath); err != nil {
 		res.Error = fmt.Sprintf("设备截图失败: %v", err)
 		return res, nil
 	}
 
-	// 3. 从设备中拉取截图文件
 	if err = adbTool.PullFile(deviceId, deviceTempPath, tempFileName); err != nil {
 		res.Error = fmt.Sprintf("拉取截图失败: %v", err)
-		// 清理设备上的临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		return res, nil
 	}
 
-	// 4. 读取本地文件
 	imgData, err := os.ReadFile(tempFileName)
 	if err != nil {
 		res.Error = fmt.Sprintf("读取截图文件失败: %v", err)
-		// 清理设备上和本地的临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return res, nil
 	}
 
-	// 5. 解码PNG图片
 	img, err := png.Decode(bytes.NewReader(imgData))
 	if err != nil {
 		res.Error = fmt.Sprintf("解码PNG图片失败: %v", err)
-		// 清理临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return res, nil
 	}
 
-	// 计算原始图片hash
 	contentHash := calculateImageHash(img)
 
-	// 检查是否需要更新缓存
 	if cached := s.getCachedScreenshot(ctx, deviceId, quality, scale, format); cached != nil {
 		if cached.contentHash == contentHash {
 			res.Success = true
@@ -306,47 +362,30 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		}
 	}
 
-	// 6. 缩放图片
-	if scale < 1.0 {
-		img = resizeImage(img, scale)
-	}
+	// 处理图片（缩放和旋转）
+	img = processImage(img, scale, true) // true表示启用自动旋转
 
-	// 7. 根据格式进行编码
-	var buf bytes.Buffer
-	switch format {
-	case "webp":
-		err = webp.Encode(&buf, img, &webp.Options{
-			Lossless: false,
-			Quality:  float32(quality),
-		})
-	case "jpeg":
-		err = jpeg.Encode(&buf, img, &jpeg.Options{
-			Quality: quality,
-		})
-	default:
-		err = fmt.Errorf("不支持的图片格式: %s", format)
-	}
-
+	// 编码图片
+	encodedData, err := encodeImage(img, format, quality)
 	if err != nil {
 		res.Error = fmt.Sprintf("图片编码失败: %v", err)
-		// 清理临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
 		return res, nil
 	}
 
-	// 8. Base64编码
+	// Base64编码
 	imageData := fmt.Sprintf("data:image/%s;base64,%s",
 		format,
-		base64.StdEncoding.EncodeToString(buf.Bytes()))
+		base64.StdEncoding.EncodeToString(encodedData))
 
-	// 9. 更新缓存
+	// 更新缓存
 	s.setCacheScreenshot(ctx, deviceId, imageData, quality, scale, format, contentHash)
 
 	res.Success = true
 	res.ImageData = imageData
 
-	// 10. 清理临时文件
+	// 清理临时文件
 	adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 	os.Remove(tempFileName)
 
