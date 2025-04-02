@@ -2,12 +2,15 @@
 
 <div align="center">
 <p align="center">
-  <img src="./example.png" alt="MobileManager Screenshot" width="800" style="border-radius: 6px;"/>
+  <a href="https://www.bilibili.com/video/BV1AAZpYWEnH" target="_blank">
+    观看演示视频 | Watch Demo Video
+  </a>
 </p>
 
 <p align="center">
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![ws-scrcpy](https://img.shields.io/badge/ws--scrcpy-MIT-blue.svg)](https://github.com/NetrisTV/ws-scrcpy)
 [![GoFrame](https://img.shields.io/badge/GoFrame-v2.0-brightgreen.svg)](https://goframe.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.x-green.svg)](https://vuejs.org/)
 [![Pure Admin](https://img.shields.io/badge/Pure%20Admin-Latest-blue.svg)](https://github.com/pure-admin/vue-pure-admin)
@@ -123,10 +126,23 @@ MobileManager/
 └── wscrcpy/              # WebScrcpy 集成
 ```
 
-## �� 贡献指南
+## 📄 贡献指南
 
 欢迎提交 Issue 和 Pull Request！
 
 ## 📄 开源协议
 
-本项目采用 MIT 协议。详见 [LICENSE](LICENSE) 文件。
+本项目采用 [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) 协议。
+
+这意味着您可以：
+- ✅ 自由使用、复制、修改和分享本项目
+- ✅ 以任何形式重新分发本项目
+- ❌ 不得将本项目用于商业目的
+
+使用条件：
+1. **署名**：必须给出适当的署名，提供指向本许可证的链接，同时标明是否对原始内容作出修改
+2. **非商业性**：不得将本项目用于商业目的
+3. **分享时保持许可协议一致**：如果您修改了本项目，必须以相同的许可证分发您的贡献
+
+本项目使用的第三方组件遵循其原有的许可证：
+- [ws-scrcpy](https://github.com/NetrisTV/ws-scrcpy) - MIT 许可证

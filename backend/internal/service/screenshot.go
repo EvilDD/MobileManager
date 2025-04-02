@@ -11,6 +11,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -243,18 +244,26 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	// 1. 连接设备
 	if err = adbTool.Connect(deviceId); err != nil {
 		res.Error = fmt.Sprintf("连接设备失败: %v", err)
-		return
+		return res, nil
 	}
 
 	// 生成唯一的临时文件名
 	timestamp := time.Now().UnixNano()
-	tempFileName := fmt.Sprintf("screenshot_%s_%d.png", strings.Replace(deviceId, ":", "_", -1), timestamp)
-	deviceTempPath := fmt.Sprintf("/data/local/tmp/%s", tempFileName)
+
+	// 确保资源目录存在
+	screenshotDir := "resource/screenshots"
+	if err := os.MkdirAll(screenshotDir, 0755); err != nil {
+		res.Error = fmt.Sprintf("创建截图目录失败: %v", err)
+		return res, nil
+	}
+
+	tempFileName := filepath.Join(screenshotDir, fmt.Sprintf("screenshot_%s_%d.png", strings.Replace(deviceId, ":", "_", -1), timestamp))
+	deviceTempPath := fmt.Sprintf("/data/local/tmp/%s", filepath.Base(tempFileName))
 
 	// 2. 在设备上执行截图命令
 	if err = adbTool.Screencap(deviceId, deviceTempPath); err != nil {
 		res.Error = fmt.Sprintf("设备截图失败: %v", err)
-		return
+		return res, nil
 	}
 
 	// 3. 从设备中拉取截图文件
@@ -262,7 +271,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		res.Error = fmt.Sprintf("拉取截图失败: %v", err)
 		// 清理设备上的临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
-		return
+		return res, nil
 	}
 
 	// 4. 读取本地文件
@@ -272,7 +281,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		// 清理设备上和本地的临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
-		return
+		return res, nil
 	}
 
 	// 5. 解码PNG图片
@@ -282,7 +291,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		// 清理临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
-		return
+		return res, nil
 	}
 
 	// 计算原始图片hash
@@ -323,7 +332,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		// 清理临时文件
 		adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 		os.Remove(tempFileName)
-		return
+		return res, nil
 	}
 
 	// 8. Base64编码
@@ -341,5 +350,5 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	adbTool.RemoveDeviceFile(deviceId, deviceTempPath)
 	os.Remove(tempFileName)
 
-	return
+	return res, nil
 }
