@@ -176,6 +176,23 @@ export abstract class BaseCanvasBasedPlayer extends BasePlayer {
         };
         this.tag.width = Math.round(width);
         this.tag.height = Math.round(height);
+
+        // 设置视频层和触摸层的共同样式
+        const commonStyle = {
+            position: 'absolute',
+            left: '0',
+            top: '0',
+            minHeight: '200px',
+            minWidth: '200px'
+        };
+
+        // 应用样式到视频层
+        Object.assign(this.tag.style, commonStyle);
+
+        // 应用样式到触摸层
+        Object.assign(this.touchableCanvas.style, commonStyle);
+        this.touchableCanvas.width = Math.round(width);
+        this.touchableCanvas.height = Math.round(height);
     }
 
     public play(): void {

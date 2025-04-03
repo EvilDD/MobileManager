@@ -139,16 +139,21 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
 
         // 初始化canvas
         this.initCanvas(width, height);
-        if (scale !== 1) {
-            this.tag.style.transform = `scale(${scale.toFixed(4)})`;
-        } else {
-            this.tag.style.transform = ``;
-        }
-        this.tag.style.transformOrigin = 'top left';
+
+        // 应用相同的缩放到视频层和触摸层
+        const transform = scale !== 1 ? `scale(${scale.toFixed(4)})` : '';
+        this.tag.style.transform = transform;
+        this.touchableCanvas.style.transform = transform;
+
+        // 设置变换原点
+        this.tag.style.transformOrigin = '0 0';
+        this.touchableCanvas.style.transformOrigin = '0 0';
         
         // 确保视频可见的最小尺寸
         this.tag.style.minHeight = '200px';
         this.tag.style.minWidth = '200px';
+        this.touchableCanvas.style.minHeight = '200px';
+        this.touchableCanvas.style.minWidth = '200px';
     }
 
     protected decode(data: Uint8Array): void {
