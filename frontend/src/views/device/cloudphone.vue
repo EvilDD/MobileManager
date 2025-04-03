@@ -41,7 +41,8 @@ import {
   More,
   VideoPlay,
   Switch,
-  ArrowRight
+  ArrowRight,
+  FullScreen
 } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import { useCloudPhoneStore } from "@/store/modules/cloudphone";
@@ -732,6 +733,14 @@ const handleBatchAppOperation = async (operation: string) => {
   appListVisible.value = true;
 };
 
+// 在 setup 中添加横竖屏状态
+const isLandscape = computed(() => cloudPhoneStore.isLandscape);
+
+// 切换横竖屏方向
+const toggleOrientation = () => {
+  cloudPhoneStore.toggleOrientation();
+};
+
 onMounted(() => {
   getGroups();
   getDevices();
@@ -896,6 +905,15 @@ onMounted(() => {
         </div>
         
         <div class="right-controls">
+          <el-button
+            type="default"
+            size="small"
+            @click="toggleOrientation"
+          >
+            <el-icon><FullScreen /></el-icon>
+            {{ isLandscape ? '竖屏' : '横屏' }}
+          </el-button>
+          
           <el-input
             v-model="searchInput"
             placeholder="搜索云手机"
@@ -923,7 +941,7 @@ onMounted(() => {
       </div>
 
       <!-- 云手机列表 -->
-      <div v-loading="loading" class="phone-grid">
+      <div v-loading="loading" class="phone-grid" :class="{ 'landscape-mode': isLandscape }">
         <div
           v-for="device in filteredDevices"
           :key="device.id"
@@ -1336,6 +1354,10 @@ onMounted(() => {
   padding-top: 12px;
 }
 
+.phone-grid.landscape-mode {
+  grid-template-columns: repeat(auto-fill, minmax(426px, 1fr)); /* 16:9 比例的宽度 */
+}
+
 @media screen and (max-width: 1600px) {
   .phone-grid {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -1369,6 +1391,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+.landscape-mode .phone-card {
+  aspect-ratio: 16/9;
 }
 
 .phone-card:hover {
@@ -1425,13 +1451,17 @@ onMounted(() => {
   flex-grow: 1;
 }
 
+.landscape-mode .phone-preview {
+  padding-top: 56.25%; /* 横屏时使用 16:9 比例 */
+}
+
 .preview-img {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain; /* 确保图片完整显示且保持比例 */
+  object-fit: contain;
 }
 
 /* 修改截图容器样式，使其可点击并自适应 */
@@ -1448,6 +1478,10 @@ onMounted(() => {
   justify-content: center;
 }
 
+.landscape-mode .phone-preview :deep(.device-screenshot-container) {
+  transform: rotate(-90deg);
+}
+
 .phone-preview :deep(.screenshot-loading) {
   display: none !important;
 }
@@ -1457,8 +1491,12 @@ onMounted(() => {
   max-height: 100%;
   width: auto;
   height: auto;
-  object-fit: contain; /* 保持图片比例 */
+  object-fit: contain;
   transition: transform 0.3s;
+}
+
+.landscape-mode .phone-preview :deep(.screenshot-image) {
+  transform: rotate(90deg);
 }
 
 /* 离线设备的样式适配 */
@@ -1475,10 +1513,12 @@ onMounted(() => {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-.offline-placeholder img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+.landscape-mode .offline-placeholder {
+  transform: rotate(-90deg);
+}
+
+.landscape-mode .offline-placeholder img {
+  transform: rotate(90deg);
 }
 
 .phone-actions {
