@@ -134,30 +134,33 @@
     if (!streamFrame.value || !streamFrame.value.parentElement) return;
     
     const container = streamFrame.value.parentElement;
+    const parentRect = container.parentElement?.getBoundingClientRect();
+    
+    if (!parentRect) return;
+    
     let width, height;
+    const parentWidth = parentRect.width;
+    const parentHeight = parentRect.height;
     
     if (landscape) {
       // 横屏模式：交换宽高，确保完全匹配config配置
-      width = STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT; // 990
-      height = STREAM_WINDOW_CONFIG.DEFAULT_WIDTH; // 480
+      width = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT, parentWidth); // 990
+      height = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_WIDTH, parentHeight); // 480
     } else {
       // 竖屏模式：正常宽高，完全匹配config配置
-      width = STREAM_WINDOW_CONFIG.DEFAULT_WIDTH;  // 480
-      height = STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT; // 990
+      width = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_WIDTH, parentWidth);  // 480
+      height = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT, parentHeight); // 990
     }
     
     console.log(`调整设备视图尺寸: ${width}x${height}, 横屏: ${landscape}`);
     
-    // 设置容器尺寸，保持完整尺寸
-    container.style.width = `${width}px`;
-    container.style.height = `${height}px`;
-    
     // 设置iframe尺寸，确保完全匹配容器尺寸
     streamFrame.value.style.cssText = `
-      width: ${width}px !important;
-      height: ${height}px !important;
+      width: 100% !important;
+      height: 100% !important;
       visibility: ${loading.value || error.value ? 'hidden' : 'visible'} !important;
       display: block !important;
+      object-fit: contain !important;
     `;
   };
   
@@ -387,20 +390,21 @@
   
   <style scoped>
   .device-stream-container {
-    position: relative;
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');  /* 480px */
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
-    display: flex;
-    flex-direction: column;
-    background: #000;
-    transition: all 0.3s ease;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    position: relative !important;
   }
   
-  /* 横屏样式 */
-  .device-stream-container.landscape {
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
-    transform: rotate(0deg); /* 确保容器本身不旋转 */
+  .device-stream-frame {
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+    display: block !important;
+    object-fit: contain !important;
   }
   
   .device-stream-loading,
@@ -452,14 +456,11 @@
     }
   }
   
-  .device-stream-frame {
-    flex: 1;
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
-    border: none;
-    background: transparent;
-    display: block;
-    transition: all 0.3s ease;
+  /* 横屏样式 */
+  .device-stream-container.landscape {
+    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
+    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
+    transform: rotate(0deg); /* 确保容器本身不旋转 */
   }
   
   /* 横屏模式下的iframe */

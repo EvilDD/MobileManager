@@ -431,6 +431,7 @@ const onLoadingStart = (deviceId) => {
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
+  box-sizing: border-box;
 }
 
 /* 横屏样式 */
@@ -470,10 +471,18 @@ const onLoadingStart = (deviceId) => {
   border-radius: 30px;
   overflow: hidden;
   background-color: #000;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 :deep(.device-stream-frame) {
   border-radius: 30px;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
 }
 
 /* 添加缩放手柄样式 */
