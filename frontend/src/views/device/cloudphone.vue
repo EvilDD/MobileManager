@@ -1392,6 +1392,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
 }
 
 .landscape-mode .phone-card {
@@ -1453,7 +1454,13 @@ onMounted(() => {
 }
 
 .landscape-mode .phone-preview {
-  padding-top: 56.25%; /* 横屏时使用 16:9 比例 */
+  padding-top: 0; /* 移除固定比例 */
+  position: absolute;
+  top: 40px; /* phone-header 的高度 */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(100% - 40px); /* 减去 header 高度 */
 }
 
 /* 修改截图容器样式，使其可点击并自适应 */
@@ -1471,15 +1478,9 @@ onMounted(() => {
 }
 
 .landscape-mode .phone-preview :deep(.device-screenshot-container) {
-  transform: none; /* 移除旋转，由图片本身处理旋转 */
+  transform: none;
   width: 100% !important;
   height: 100% !important;
-  top: 0 !important;
-  left: 0 !important;
-}
-
-.phone-preview :deep(.screenshot-loading) {
-  display: none !important;
 }
 
 .phone-preview :deep(.screenshot-image) {
@@ -1488,7 +1489,6 @@ onMounted(() => {
   width: auto;
   height: auto;
   object-fit: contain;
-  transition: transform 0.3s;
 }
 
 .landscape-mode .phone-preview :deep(.screenshot-image) {
