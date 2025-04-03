@@ -967,6 +967,7 @@ onMounted(() => {
               :quality="80"
               :auto-refresh="autoRefresh"
               :refresh-interval="refreshInterval"
+              :is-landscape="isLandscape"
               @click="handleScreenshotClick(device)"
               @screenshot-ready="(imageData) => handleScreenshotReady(device.deviceId, imageData)"
               @screenshot-error="(err) => handleScreenshotError(device.deviceId, err)"
@@ -1455,22 +1456,13 @@ onMounted(() => {
   padding-top: 56.25%; /* 横屏时使用 16:9 比例 */
 }
 
-.preview-img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 /* 修改截图容器样式，使其可点击并自适应 */
 .phone-preview :deep(.device-screenshot-container) {
   position: absolute !important;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
   background-color: transparent;
   cursor: pointer;
   display: flex;
@@ -1479,7 +1471,11 @@ onMounted(() => {
 }
 
 .landscape-mode .phone-preview :deep(.device-screenshot-container) {
-  transform: rotate(-90deg);
+  transform: none; /* 移除旋转，由图片本身处理旋转 */
+  width: 100% !important;
+  height: 100% !important;
+  top: 0 !important;
+  left: 0 !important;
 }
 
 .phone-preview :deep(.screenshot-loading) {
@@ -1496,7 +1492,9 @@ onMounted(() => {
 }
 
 .landscape-mode .phone-preview :deep(.screenshot-image) {
-  transform: rotate(90deg);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* 离线设备的样式适配 */
@@ -1514,11 +1512,15 @@ onMounted(() => {
 }
 
 .landscape-mode .offline-placeholder {
-  transform: rotate(-90deg);
+  transform: none;
+  width: 100%;
+  left: 0;
 }
 
 .landscape-mode .offline-placeholder img {
-  transform: rotate(90deg);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .phone-actions {

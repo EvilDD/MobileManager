@@ -59,6 +59,10 @@ const props = defineProps({
   autoRefresh: {
     type: Boolean,
     default: true
+  },
+  isLandscape: {  // 添加横屏模式 prop
+    type: Boolean,
+    default: false
   }
 });
 
@@ -74,6 +78,35 @@ const refreshTimer = ref<number | null>(null);
 // 连接状态检查定时器
 const connectionCheckTimer = ref<number | null>(null);
 
+// 旋转图片
+const rotateImage = (base64Data: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('无法创建 canvas context'));
+        return;
+      }
+
+      // 交换宽高
+      canvas.width = img.height;
+      canvas.height = img.width;
+
+      // 移动到画布中心并旋转
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+      // 转换回 base64
+      resolve(canvas.toDataURL('image/jpeg', props.quality / 100));
+    };
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = base64Data;
+  });
+};
+
 // 获取设备截图
 const captureScreenshot = async () => {
   if (!props.deviceId) return;
@@ -88,9 +121,6 @@ const captureScreenshot = async () => {
       quality: props.quality
     });
     
-    // console.log("截图响应数据:", JSON.stringify(res).slice(0, 100) + "...");
-    
-    // 确保data字段存在
     if (!res.data) {
       console.error("截图响应缺少data字段:", res);
       error.value = true;
@@ -99,13 +129,11 @@ const captureScreenshot = async () => {
       return;
     }
     
-    // 判断响应是否成功
     if (res.code === 0) {
       let success = false;
       let imgData = "";
       let errMsg = "";
       
-      // 获取正确的字段
       if ('success' in res.data) {
         success = res.data.success;
       }
@@ -119,20 +147,24 @@ const captureScreenshot = async () => {
       }
       
       if (success && imgData) {
-        // 设备成功连接
         disconnected.value = false;
         
-        // 检查base64数据是否已经包含了前缀
-        if (imgData.startsWith('data:image')) {
-          imageData.value = imgData;
-        } else {
-          // 移除可能的空白字符并添加前缀
-          imageData.value = `data:image/jpeg;base64,${imgData.replace(/^[\s\r\n]+|[\s\r\n]+$/g, '')}`;
+        // 确保 base64 数据格式正确
+        let fullImageData = imgData.startsWith('data:image') 
+          ? imgData 
+          : `data:image/jpeg;base64,${imgData.replace(/^[\s\r\n]+|[\s\r\n]+$/g, '')}`;
+
+        // 如果是横屏模式，旋转图片
+        if (props.isLandscape) {
+          try {
+            fullImageData = await rotateImage(fullImageData);
+          } catch (err) {
+            console.error('图片旋转失败:', err);
+          }
         }
-        // console.log("截图数据已获取，长度:", (imageData.value?.length || 0));
+
+        imageData.value = fullImageData;
         emit('screenshot-ready', imageData.value);
-        
-        // 不自动启动连接状态检查
       } else {
         error.value = true;
         errorMessage.value = errMsg || '获取截图失败';
