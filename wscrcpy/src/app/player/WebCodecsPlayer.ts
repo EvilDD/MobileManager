@@ -24,10 +24,10 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
 
     public static readonly preferredVideoSettings: VideoSettings = new VideoSettings({
         lockedVideoOrientation: -1,
-        bitrate: 524288,
+        bitrate: 5024288,
         maxFps: 24,
         iFrameInterval: 5,
-        bounds: new Size(480, 480),
+        bounds: new Size(540, 960),
         sendFrameMeta: false,
     });
 
@@ -111,49 +111,56 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     }
 
     protected scaleCanvas(width: number, height: number): void {
-        const videoSize = new Size(width, height);
-        let scale = 1;
+        console.log('原始视频尺寸:', { width, height });
         
-        // 获取屏幕尺寸
-        const availableWidth = window.innerWidth;
-        // 计算控制面板高度
-        const buttonHeight = 3.715 * parseFloat(getComputedStyle(document.documentElement).fontSize);
-        const availableHeight = window.innerHeight - buttonHeight; // 减去控制面板高度
+        // 获取设备像素比
+        const dpr = window.devicePixelRatio || 1;
+        console.log('设备像素比:', dpr);
         
-        // 根据可用空间计算缩放比例
-        if (this.bounds && !this.bounds.intersect(videoSize).equals(videoSize)) {
-            scale = Math.min(this.bounds.w / width, this.bounds.h / height);
-        } else {
-            scale = Math.min(availableWidth / width, availableHeight / height, 1);
-        }
+        // 计算实际显示尺寸
+        const displayWidth = Math.round(width);
+        const displayHeight = Math.round(height);
         
-        // 确保最小缩放比例
-        scale = Math.max(scale, 0.1);
+        // 计算Canvas的物理像素尺寸
+        const canvasWidth = Math.round(displayWidth * dpr);
+        const canvasHeight = Math.round(displayHeight * dpr);
         
-        const w = Math.max(width * scale, 200); // 确保最小宽度
-        const h = Math.max(height * scale, 200); // 确保最小高度
+        console.log('显示尺寸:', { displayWidth, displayHeight });
+        console.log('Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
         
-        const screenInfo = new ScreenInfo(new Rect(0, 0, width, height), new Size(w, h), 0);
+        const screenInfo = new ScreenInfo(new Rect(0, 0, width, height), new Size(displayWidth, displayHeight), 0);
         this.emit('input-video-resize', screenInfo);
         this.setScreenInfo(screenInfo);
 
-        // 初始化canvas
-        this.initCanvas(width, height);
+        // 初始化canvas，使用物理像素尺寸
+        this.initCanvas(canvasWidth, canvasHeight);
 
-        // 应用相同的缩放到视频层和触摸层
-        const transform = scale !== 1 ? `scale(${scale.toFixed(4)})` : '';
-        this.tag.style.transform = transform;
-        this.touchableCanvas.style.transform = transform;
+        // 设置统一的CSS显示尺寸
+        const commonStyle = {
+            position: 'absolute',
+            left: '0',
+            top: '0',
+            width: `${displayWidth}px`,
+            height: `${displayHeight}px`,
+            transformOrigin: '0 0',
+            minWidth: '200px',
+            minHeight: '200px'
+        };
 
-        // 设置变换原点
-        this.tag.style.transformOrigin = '0 0';
-        this.touchableCanvas.style.transformOrigin = '0 0';
+        // 应用样式到视频层
+        Object.assign(this.tag.style, commonStyle);
+
+        // 应用样式到触摸层
+        Object.assign(this.touchableCanvas.style, commonStyle);
         
-        // 确保视频可见的最小尺寸
-        this.tag.style.minHeight = '200px';
-        this.tag.style.minWidth = '200px';
-        this.touchableCanvas.style.minHeight = '200px';
-        this.touchableCanvas.style.minWidth = '200px';
+        // 设置Canvas的缩放以匹配设备像素比
+        this.context.scale(dpr, dpr);
+        
+        // 如果父元素存在，也更新其尺寸
+        if (this.parentElement) {
+            this.parentElement.style.width = `${displayWidth}px`;
+            this.parentElement.style.height = `${displayHeight}px`;
+        }
     }
 
     protected decode(data: Uint8Array): void {
