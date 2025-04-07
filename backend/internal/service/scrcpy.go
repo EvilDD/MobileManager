@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	v1 "backend/api/scrcpy/v1"
@@ -62,6 +63,10 @@ func (s *sScrcpy) StartStream(ctx context.Context, req *v1.StartStreamReq) (res 
 
 	// 启动服务器
 	if err := s.startServer(ctx, session); err != nil {
+		// 检查是否是端口占用错误
+		if strings.Contains(err.Error(), "Address already in use") {
+			return nil, gerror.New("设备正在被其他用户使用中")
+		}
 		return nil, err
 	}
 
@@ -139,12 +144,16 @@ func (s *sScrcpy) startServer(ctx context.Context, session *StreamSession) error
 func (s *sScrcpy) killServer(ctx context.Context, session *StreamSession) error {
 	// 终止服务器进程
 	cmd := exec.Command("adb", "-s", session.DeviceId, "shell",
-		fmt.Sprintf("pkill -f 'app_process.*com.genymobile.scrcpy.Server'"))
+		"ps -ef | grep app_process | grep -v grep | awk '{print $2}' | xargs kill -9")
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
+		// 如果进程已经不存在，忽略错误
+		if strings.Contains(err.Error(), "exit status 1") {
+			return nil
+		}
 		return gerror.Wrap(err, "Failed to kill scrcpy server")
 	}
 

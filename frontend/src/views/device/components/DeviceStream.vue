@@ -16,6 +16,8 @@
   import { Loading, CircleClose } from '@element-plus/icons-vue';
   import { STREAM_WINDOW_CONFIG } from './config';
   import { ElMessage } from 'element-plus';
+  import { startDeviceStream, stopDeviceStream } from '@/api/device';
+  import { useUserStore } from '@/store/modules/user';
   
   const props = defineProps({
     deviceId: {
@@ -41,6 +43,8 @@
   const wscrcpyBaseUrl = computed(() => props.serverUrl || 'http://localhost:8000');
   const iframeSrc = ref('about:blank');
   const isLandscape = ref(false); // 添加横屏状态变量
+  
+  const userStore = useUserStore();
   
   // 连接超时定时器
   let connectionTimeoutTimer = null;
@@ -95,7 +99,7 @@
   });
   
   // 开始连接
-  const startConnect = () => {
+  const startConnect = async () => {
     if (!props.deviceId) return;
     
     loading.value = true;
@@ -105,28 +109,39 @@
     // 触发事件指示正在加载中
     emit('loading-start', props.deviceId);
     
-    // 清除已有的超时定时器
-    clearConnectionTimeout();
-    
-    // 设置连接超时定时器
-    startConnectionTimeout();
-    
-    // 使用nextTick确保DOM已渲染
-    nextTick(() => {
-      console.log('开始连接设备:', props.deviceId, '服务器地址:', wscrcpyBaseUrl.value);
-      
-      // 先手动强制设置iframe容器尺寸
-      if (streamFrame.value && streamFrame.value.parentElement) {
-        updateContainerSize(isLandscape.value);
-        
-        // 直接加载串流URL
-        console.log('加载串流URL:', streamUrl.value);
-        iframeSrc.value = streamUrl.value;
-      } else {
-        // 如果无法获取iframe元素，直接报错
-        handleConnectionError('无法初始化连接界面');
+    try {
+      // 调用开始串流接口
+      const response = await startDeviceStream(props.deviceId);
+      if (response.code !== 0) {
+        throw new Error(response.message || '启动串流失败');
       }
-    });
+      
+      // 清除已有的超时定时器
+      clearConnectionTimeout();
+      
+      // 设置连接超时定时器
+      startConnectionTimeout();
+      
+      // 使用nextTick确保DOM已渲染
+      nextTick(() => {
+        console.log('开始连接设备:', props.deviceId, '服务器地址:', wscrcpyBaseUrl.value);
+        
+        // 先手动强制设置iframe容器尺寸
+        if (streamFrame.value && streamFrame.value.parentElement) {
+          updateContainerSize(isLandscape.value);
+          
+          // 直接加载串流URL
+          console.log('加载串流URL:', streamUrl.value);
+          iframeSrc.value = streamUrl.value;
+        } else {
+          // 如果无法获取iframe元素，直接报错
+          handleConnectionError('无法初始化连接界面');
+        }
+      });
+    } catch (err) {
+      handleConnectionError(err.message || '启动串流失败');
+      ElMessage.error(err.message || '启动串流失败');
+    }
   };
   
   // 根据横竖屏状态调整容器尺寸
@@ -210,26 +225,26 @@
   };
   
   // 处理连接错误
-  const handleConnectionError = (errorMsg) => {
-    if (error.value) return; // 防止重复触发
-    
-    console.error('串流连接错误:', errorMsg, '服务器地址:', wscrcpyBaseUrl.value);
-    
-    // 清除连接超时定时器
-    clearConnectionTimeout();
-    
+  const handleConnectionError = (message) => {
     error.value = true;
     loading.value = false;
-    errorMessage.value = errorMsg || '连接失败';
+    errorMessage.value = message;
     
-    // 显示错误消息提示
-    ElMessage.error(`设备 ${props.deviceId} ${errorMessage.value}`);
+    // 停止串流
+    if (props.deviceId) {
+      stopDeviceStream(props.deviceId).catch(err => {
+        console.error('停止串流失败:', err);
+      });
+    }
     
     // 触发错误事件
     emit('stream-error', {
       deviceId: props.deviceId,
-      error: `${errorMessage.value} (服务器: ${wscrcpyBaseUrl.value})` // 在错误信息中包含服务器地址
+      error: message
     });
+    
+    // 显示错误消息
+    ElMessage.error(message);
   };
   
   // 处理来自iframe的消息事件
@@ -364,14 +379,19 @@
   });
   
   // 组件卸载前，清理资源
-  onBeforeUnmount(() => {
-    // 清除连接超时定时器
-    clearConnectionTimeout();
+  onBeforeUnmount(async () => {
+    if (props.deviceId) {
+      try {
+        await stopDeviceStream(props.deviceId);
+      } catch (err) {
+        console.error('停止串流失败:', err);
+      }
+    }
     
-    // 清除连接稳定期定时器
+    // 清理定时器
+    clearConnectionTimeout();
     if (connectionStabilityTimer) {
       clearTimeout(connectionStabilityTimer);
-      connectionStabilityTimer = null;
     }
     
     // 移除消息事件监听器
