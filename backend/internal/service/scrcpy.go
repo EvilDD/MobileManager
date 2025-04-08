@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -574,55 +575,80 @@ func (s *sScrcpy) killServer(ctx context.Context, session *StreamSession) error 
 
 // 设置ADB端口转发
 func (s *sScrcpy) setupPortForward(ctx context.Context, session *StreamSession) (int, error) {
-	// 1. 先检查是否已有端口转发
-	checkCmd := exec.Command("adb", "-s", session.DeviceId, "forward", "--list")
-	output, err := checkCmd.Output()
+	// 1. 检查是否已有端口转发
+	cmd := exec.Command("adb", "-s", session.DeviceId, "forward", "--list")
+	output, err := cmd.Output()
 	if err != nil {
-		return 0, gerror.Wrap(err, "Failed to check existing port forwards")
+		return 0, gerror.Wrap(err, "检查端口转发失败")
 	}
 
-	// 解析输出寻找现有的转发
+	// 解析现有端口转发
+	existingForwards := make(map[string]int)
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// 格式通常是: deviceId tcp:localPort tcp:remotePort
-		if strings.Contains(line, session.DeviceId) && strings.Contains(line, fmt.Sprintf("tcp:%d", session.Port)) {
-			parts := strings.Split(line, " ")
-			for i, part := range parts {
-				if strings.HasPrefix(part, "tcp:") && i < len(parts)-1 && parts[i+1] == fmt.Sprintf("tcp:%d", session.Port) {
-					// 解析本地端口
-					localPortStr := strings.TrimPrefix(part, "tcp:")
-					localPort := 0
-					if _, err := fmt.Sscanf(localPortStr, "%d", &localPort); err == nil && localPort > 0 {
-						return localPort, nil
-					}
+		parts := strings.Fields(line)
+		if len(parts) >= 3 {
+			device := parts[0]
+			localPort := parts[1]
+			remotePort := parts[2]
+			if strings.HasPrefix(localPort, "tcp:") && strings.HasPrefix(remotePort, "tcp:") {
+				local, _ := strconv.Atoi(strings.TrimPrefix(localPort, "tcp:"))
+				remote, _ := strconv.Atoi(strings.TrimPrefix(remotePort, "tcp:"))
+				if remote == session.Port {
+					existingForwards[device] = local
 				}
 			}
 		}
 	}
 
-	// 2. 如果没有现有转发，创建新的转发
-	// 寻找可用端口，从10000开始
+	// 2. 如果已有转发，检查是否可用
+	if localPort, exists := existingForwards[session.DeviceId]; exists {
+		s.logDebug("发现现有端口转发: 设备=%s, 本地端口=%d, 远程端口=%d",
+			session.DeviceId, localPort, session.Port)
+
+		// 测试端口是否可用
+		if s.testConnection(ctx, session.DeviceId, localPort) {
+			s.logDebug("现有端口转发可用，复用端口: %d", localPort)
+			return localPort, nil
+		}
+
+		// 如果端口不可用，移除旧的转发
+		s.logDebug("现有端口转发不可用，移除并重新创建")
+		removeCmd := exec.Command("adb", "-s", session.DeviceId, "forward",
+			fmt.Sprintf("--remove tcp:%d", localPort))
+		_ = removeCmd.Run()
+	}
+
+	// 3. 创建新的端口转发
 	localPort := 10000
 	maxPort := 20000
 	for localPort < maxPort {
-		// 尝试设置端口转发
-		forwardCmd := exec.Command("adb", "-s", session.DeviceId, "forward",
-			fmt.Sprintf("tcp:%d", localPort), fmt.Sprintf("tcp:%d", session.Port))
+		// 检查端口是否已被其他设备使用
+		portInUse := false
+		for device, port := range existingForwards {
+			if port == localPort && device != session.DeviceId {
+				portInUse = true
+				break
+			}
+		}
 
-		if err := forwardCmd.Run(); err == nil {
-			return localPort, nil
+		if !portInUse {
+			// 尝试设置端口转发
+			forwardCmd := exec.Command("adb", "-s", session.DeviceId, "forward",
+				fmt.Sprintf("tcp:%d", localPort), fmt.Sprintf("tcp:%d", session.Port))
+
+			if err := forwardCmd.Run(); err == nil {
+				s.logDebug("创建新的端口转发: 设备=%s, 本地端口=%d, 远程端口=%d",
+					session.DeviceId, localPort, session.Port)
+				return localPort, nil
+			}
 		}
 
 		// 尝试下一个端口
 		localPort++
 	}
 
-	return 0, gerror.New("Failed to find available port for forwarding")
+	return 0, gerror.New("无法找到可用端口")
 }
 
 // 移除端口转发
