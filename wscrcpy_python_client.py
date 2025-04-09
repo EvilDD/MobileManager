@@ -45,8 +45,8 @@ class ScrcpyClient:
     TYPE_ROTATE_DEVICE = 11
     
     # 视频设置中使用的尺寸参数（发送给服务器的期望尺寸）
-    VIDEO_SCREEN_WIDTH = 960  # 使用整数
-    VIDEO_SCREEN_HEIGHT = 480  # 使用整数
+    VIDEO_SCREEN_WIDTH = 480  # 使用整数
+    VIDEO_SCREEN_HEIGHT = 960  # 使用整数
     
     def __init__(self, ws_url="ws://172.17.1.205:8886/"):
         """初始化客户端"""
@@ -467,6 +467,38 @@ class ScrcpyClient:
         await self.send_touch_event(self.ACTION_UP, x, y)
         print(f"点击事件已完成: ({x}, {y})")
     
+    async def swipe(self, start_x, start_y, end_x, end_y, duration=0.5, steps=10):
+        """
+        滑动事件
+        
+        参数:
+            start_x, start_y: 起始坐标
+            end_x, end_y: 结束坐标
+            duration: 滑动总持续时间(秒)
+            steps: 滑动步数，越大越平滑
+        """
+        print(f"开始滑动: ({start_x}, {start_y}) -> ({end_x}, {end_y}), 持续时间: {duration}秒")
+        
+        # 发送按下事件
+        await self.send_touch_event(self.ACTION_DOWN, start_x, start_y)
+        await asyncio.sleep(0.05)  # 短暂延迟
+        
+        # 计算每一步的移动距离
+        x_step = (end_x - start_x) / steps
+        y_step = (end_y - start_y) / steps
+        step_delay = duration / steps
+        
+        # 发送移动事件
+        for i in range(1, steps + 1):
+            current_x = int(start_x + x_step * i)
+            current_y = int(start_y + y_step * i)
+            await self.send_touch_event(self.ACTION_MOVE, current_x, current_y)
+            await asyncio.sleep(step_delay)
+        
+        # 发送抬起事件
+        await self.send_touch_event(self.ACTION_UP, end_x, end_y)
+        print(f"滑动事件已完成: ({start_x}, {start_y}) -> ({end_x}, {end_y})")
+    
     def set_video_screen_size(self, width, height):
         """设置视频屏幕尺寸"""
         self.VIDEO_SCREEN_WIDTH = width
@@ -739,7 +771,7 @@ class ScrcpyClient:
 async def main():
     """主函数"""
     # 创建客户端实例
-    client = ScrcpyClient("ws://localhost:8000/?action=proxy-adb&remote=tcp%3A8886&udid=127.0.0.1%3A16480")
+    client = ScrcpyClient("ws://localhost:8000/?action=proxy-adb&remote=tcp%3A8886&udid=FMLDU19C27006191")
     
     try:
         # 连接服务器
@@ -763,19 +795,45 @@ async def main():
             print("初始化超时，未能获取设备信息")
             return
             
-        print("初始化成功，开始执行点击测试")
+        print("初始化成功，开始执行测试")
         
         # 等待2秒，确保视频流开始
         await asyncio.sleep(2)
         
+        # 获取屏幕尺寸
+        width = client.touch_screen_width
+        height = client.touch_screen_height
+        
         # 执行点击测试
         # 点击屏幕中心
-        center_x = client.touch_screen_width // 2
-        center_y = client.touch_screen_height // 2
+        center_x = width // 2
+        center_y = height // 2
         print(f"点击屏幕中心: ({center_x}, {center_y})")
         await client.click(center_x, center_y)
+        await asyncio.sleep(1)
         
-        print("点击操作完成，等待5秒...")
+        # 执行滑动测试
+        # 从下到上滑动（模拟上滑查看内容）
+        start_x = width // 2
+        start_y = (height * 3) // 4  # 从屏幕3/4处开始
+        end_x = width // 2
+        end_y = height // 4  # 滑动到屏幕1/4处
+        
+        print(f"执行滑动测试: 从下往上滑动")
+        await client.swipe(start_x, start_y, end_x, end_y, duration=0.8, steps=15)
+        
+        await asyncio.sleep(1)
+        
+        # 从右到左滑动（模拟左滑切换页面）
+        start_x = (width * 3) // 4  # 从屏幕右侧3/4处开始
+        start_y = height // 2
+        end_x = width // 4  # 滑动到屏幕左侧1/4处
+        end_y = height // 2
+        
+        print(f"执行滑动测试: 从右往左滑动")
+        await client.swipe(start_x, start_y, end_x, end_y, duration=0.8, steps=15)
+        
+        print("测试操作完成，等待5秒...")
         # 继续接收一段时间
         await asyncio.sleep(5)
         
