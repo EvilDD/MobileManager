@@ -609,6 +609,10 @@ func (s *sScrcpy) setupPortForward(ctx context.Context, session *StreamSession) 
 		// 测试端口是否可用
 		if s.testConnection(ctx, session.DeviceId, localPort) {
 			s.logDebug("现有端口转发可用，复用端口: %d", localPort)
+
+			// 向WebSocket服务注册设备和端口的映射关系
+			GetScrcpyWebsocketService().RegisterDevicePort(ctx, session.DeviceId, localPort)
+
 			return localPort, nil
 		}
 
@@ -640,6 +644,10 @@ func (s *sScrcpy) setupPortForward(ctx context.Context, session *StreamSession) 
 			if err := forwardCmd.Run(); err == nil {
 				s.logDebug("创建新的端口转发: 设备=%s, 本地端口=%d, 远程端口=%d",
 					session.DeviceId, localPort, session.Port)
+
+				// 向WebSocket服务注册设备和端口的映射关系
+				GetScrcpyWebsocketService().RegisterDevicePort(ctx, session.DeviceId, localPort)
+
 				return localPort, nil
 			}
 		}
@@ -661,6 +669,9 @@ func (s *sScrcpy) removePortForward(ctx context.Context, session *StreamSession)
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Failed to remove port forward: %v\n", err)
 	}
+
+	// 从WebSocket服务中移除设备和端口的映射关系
+	GetScrcpyWebsocketService().RemoveDevicePort(ctx, session.DeviceId)
 }
 
 // 检查设备连接状态

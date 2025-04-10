@@ -771,7 +771,7 @@ class ScrcpyClient:
 async def main():
     """主函数"""
     # 创建客户端实例
-    client = ScrcpyClient("ws://localhost:8000/?action=proxy-adb&remote=tcp%3A8886&udid=FMLDU19C27006191")
+    client = ScrcpyClient("ws://localhost:10001")
     
     try:
         # 连接服务器
