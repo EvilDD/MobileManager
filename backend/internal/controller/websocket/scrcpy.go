@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	"os/exec"
@@ -17,36 +16,9 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/glog"
 	"github.com/gorilla/websocket"
-)
 
-// 常量定义
-const (
-	// 消息魔法字节
-	MAGIC_BYTES_INITIAL = "scrcpy_initial"
-	MAGIC_BYTES_MESSAGE = "scrcpy_message"
-
-	// 控制消息类型
-	TYPE_INJECT_KEYCODE            = 0
-	TYPE_INJECT_TEXT               = 1
-	TYPE_INJECT_TOUCH_EVENT        = 2
-	TYPE_INJECT_SCROLL_EVENT       = 3
-	TYPE_BACK_OR_SCREEN_ON         = 4
-	TYPE_EXPAND_NOTIFICATION_PANEL = 5
-	TYPE_EXPAND_SETTINGS_PANEL     = 6
-	TYPE_COLLAPSE_PANELS           = 7
-	TYPE_GET_CLIPBOARD             = 8
-	TYPE_SET_CLIPBOARD             = 9
-	TYPE_SET_SCREEN_POWER_MODE     = 10
-	TYPE_ROTATE_DEVICE             = 11
-	TYPE_CHANGE_STREAM_PARAMETERS  = 101
-
-	// 触摸事件动作
-	ACTION_DOWN = 0
-	ACTION_UP   = 1
-	ACTION_MOVE = 2
-
-	// 按钮标识
-	BUTTON_PRIMARY = 1 << 0 // 左键
+	"backend/internal/model"
+	"backend/utility/h264"
 )
 
 // ScrcpyController 处理scrcpy的WebSocket连接和消息转发
@@ -57,47 +29,6 @@ type ScrcpyController struct {
 	deviceConnections sync.Map
 	// 保护deviceConnections的互斥锁
 	connMutex sync.RWMutex
-}
-
-// DeviceConnection 存储设备连接信息
-type DeviceConnection struct {
-	UdId              string    // 设备ID
-	Port              int       // ADB转发的端口
-	Conn              net.Conn  // 到ADB转发端口的TCP连接
-	LastUsed          time.Time // 最后使用时间
-	ScreenWidth       int       // 屏幕宽度
-	ScreenHeight      int       // 屏幕高度
-	VideoWidth        int       // 视频实际宽度
-	VideoHeight       int       // 视频实际高度
-	ClientId          int       // 客户端ID
-	HasInitInfo       bool      // 是否已接收初始化信息
-	VideoSettingsSent bool      // 是否已发送视频设置
-}
-
-// TouchEvent 触摸事件结构
-type TouchEvent struct {
-	Action int `json:"action"`
-	X      int `json:"x"`
-	Y      int `json:"y"`
-}
-
-// SwipeEvent 滑动事件结构
-type SwipeEvent struct {
-	StartX   int `json:"startX"`
-	StartY   int `json:"startY"`
-	EndX     int `json:"endX"`
-	EndY     int `json:"endY"`
-	Duration int `json:"duration"`
-	Steps    int `json:"steps"`
-}
-
-// VideoSettings 视频设置结构
-type VideoSettings struct {
-	Bitrate        int `json:"bitrate"`
-	MaxFps         int `json:"maxFps"`
-	IFrameInterval int `json:"iFrameInterval"`
-	Width          int `json:"width"`
-	Height         int `json:"height"`
 }
 
 // NewScrcpyController 创建一个新的ScrcpyController
@@ -192,7 +123,7 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 	defer tcpConn.Close()
 
 	// 记录连接信息
-	deviceConn := &DeviceConnection{
+	deviceConn := &model.DeviceConnection{
 		UdId:              udid,
 		Port:              port,
 		Conn:              tcpConn,
@@ -232,7 +163,12 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 			// 读取WebSocket消息
 			messageType, message, err := wsConn.ReadMessage()
 			if err != nil {
-				glog.Error(ctx, "读取WebSocket消息失败:", err)
+				// 检查是否是正常的连接关闭
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
+					glog.Debug(ctx, "前端WebSocket连接正常关闭")
+				} else {
+					glog.Error(ctx, "读取前端WebSocket消息失败:", err)
+				}
 				return
 			}
 
@@ -250,7 +186,12 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 				// 直接转发到TCP连接
 				_, err = tcpConn.Write(message)
 				if err != nil {
-					glog.Error(ctx, "向TCP连接写入数据失败:", err)
+					// 检查是否是连接已关闭的错误
+					if strings.Contains(err.Error(), "use of closed network connection") {
+						glog.Debug(ctx, "与设备的连接已关闭")
+					} else {
+						glog.Error(ctx, "向设备连接写入数据失败:", err)
+					}
 					return
 				}
 				glog.Debug(ctx, "转发到设备的消息大小:", len(message))
@@ -265,7 +206,12 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 			// 从TCP连接读取数据
 			n, err := tcpConn.Read(buffer)
 			if err != nil {
-				glog.Error(ctx, "从TCP连接读取数据失败:", err)
+				// 检查是否是连接已关闭的错误
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					glog.Debug(ctx, "与设备的连接已正常关闭")
+				} else {
+					glog.Error(ctx, "从设备连接读取数据失败:", err)
+				}
 
 				// 向客户端发送连接断开的错误消息
 				disconnectMsg := map[string]interface{}{
@@ -316,7 +262,7 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 }
 
 // handleCommandMessage 处理从客户端发来的JSON命令消息
-func (c *ScrcpyController) handleCommandMessage(ctx context.Context, wsConn *websocket.Conn, tcpConn net.Conn, deviceConn *DeviceConnection, message []byte) {
+func (c *ScrcpyController) handleCommandMessage(ctx context.Context, wsConn *websocket.Conn, tcpConn net.Conn, deviceConn *model.DeviceConnection, message []byte) {
 	var command map[string]interface{}
 	err := json.Unmarshal(message, &command)
 	if err != nil {
@@ -334,7 +280,7 @@ func (c *ScrcpyController) handleCommandMessage(ctx context.Context, wsConn *web
 	switch cmdType {
 	case "touch":
 		// 处理触摸事件
-		var touchEvent TouchEvent
+		var touchEvent model.TouchEvent
 		if data, ok := command["data"].(map[string]interface{}); ok {
 			touchEvent.Action = int(data["action"].(float64))
 			touchEvent.X = int(data["x"].(float64))
@@ -343,7 +289,7 @@ func (c *ScrcpyController) handleCommandMessage(ctx context.Context, wsConn *web
 		}
 	case "swipe":
 		// 处理滑动事件
-		var swipeEvent SwipeEvent
+		var swipeEvent model.SwipeEvent
 		if data, ok := command["data"].(map[string]interface{}); ok {
 			swipeEvent.StartX = int(data["startX"].(float64))
 			swipeEvent.StartY = int(data["startY"].(float64))
@@ -355,7 +301,7 @@ func (c *ScrcpyController) handleCommandMessage(ctx context.Context, wsConn *web
 		}
 	case "videoSettings":
 		// 处理视频设置
-		var videoSettings VideoSettings
+		var videoSettings model.VideoSettings
 		if data, ok := command["data"].(map[string]interface{}); ok {
 			videoSettings.Bitrate = int(data["bitrate"].(float64))
 			videoSettings.MaxFps = int(data["maxFps"].(float64))
@@ -370,15 +316,15 @@ func (c *ScrcpyController) handleCommandMessage(ctx context.Context, wsConn *web
 }
 
 // handleSpecialMessages 处理特殊消息类型
-func (c *ScrcpyController) handleSpecialMessages(ctx context.Context, wsConn *websocket.Conn, deviceConn *DeviceConnection, data []byte) bool {
+func (c *ScrcpyController) handleSpecialMessages(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) bool {
 	// 检查是否是初始化消息
-	if len(data) > len(MAGIC_BYTES_INITIAL) && strings.HasPrefix(string(data), MAGIC_BYTES_INITIAL) {
+	if len(data) > len(model.MAGIC_BYTES_INITIAL) && strings.HasPrefix(string(data), model.MAGIC_BYTES_INITIAL) {
 		c.handleInitialInfo(ctx, wsConn, deviceConn, data)
 		return true
 	}
 
 	// 检查是否是设备消息
-	if len(data) > len(MAGIC_BYTES_MESSAGE) && strings.HasPrefix(string(data), MAGIC_BYTES_MESSAGE) {
+	if len(data) > len(model.MAGIC_BYTES_MESSAGE) && strings.HasPrefix(string(data), model.MAGIC_BYTES_MESSAGE) {
 		c.handleDeviceMessage(ctx, wsConn, deviceConn, data)
 		return true
 	}
@@ -387,7 +333,7 @@ func (c *ScrcpyController) handleSpecialMessages(ctx context.Context, wsConn *we
 	if len(data) >= 5 {
 		nalType := data[4] & 0x1F
 		if nalType == 7 { // NAL type 7 表示 SPS
-			spsInfo, err := parseSPS(data)
+			spsInfo, err := h264.ParseSPS(data)
 			if err != nil {
 				glog.Error(ctx, "解析 SPS 失败", "error", err)
 				return false
@@ -453,7 +399,7 @@ func (c *ScrcpyController) handleSpecialMessages(ctx context.Context, wsConn *we
 }
 
 // handleInitialInfo 处理初始化信息
-func (c *ScrcpyController) handleInitialInfo(ctx context.Context, wsConn *websocket.Conn, deviceConn *DeviceConnection, data []byte) {
+func (c *ScrcpyController) handleInitialInfo(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) {
 	glog.Info(ctx, "处理初始化信息...")
 
 	// 直接转发初始化信息到客户端
@@ -464,7 +410,7 @@ func (c *ScrcpyController) handleInitialInfo(ctx context.Context, wsConn *websoc
 	}
 
 	// 尝试解析屏幕尺寸和客户端ID，实际应用中可能需要更复杂的解析逻辑
-	offset := len(MAGIC_BYTES_INITIAL)
+	offset := len(model.MAGIC_BYTES_INITIAL)
 
 	if len(data) > offset+100 { // 简化版，实际需要根据结构确定正确的偏移量
 		// 设备名称占64字节，跳过
@@ -493,18 +439,18 @@ func (c *ScrcpyController) handleInitialInfo(ctx context.Context, wsConn *websoc
 	// 在初始化信息处理完成后发送视频设置（如果前端请求）
 	if !deviceConn.VideoSettingsSent {
 		// 使用默认值发送视频设置
-		c.sendVideoSettings(ctx, deviceConn.Conn, deviceConn, VideoSettings{
-			Bitrate:        50000,
-			MaxFps:         24,
-			IFrameInterval: 5,
-			Width:          540,
-			Height:         960,
+		c.sendVideoSettings(ctx, deviceConn.Conn, deviceConn, model.VideoSettings{
+			Bitrate:        model.BITRATE,
+			MaxFps:         model.MAX_FPS,
+			IFrameInterval: model.I_FRAME_INTERVAL,
+			Width:          model.WIDTH,
+			Height:         model.HEIGHT,
 		})
 	}
 }
 
 // handleDeviceMessage 处理设备消息
-func (c *ScrcpyController) handleDeviceMessage(ctx context.Context, wsConn *websocket.Conn, deviceConn *DeviceConnection, data []byte) {
+func (c *ScrcpyController) handleDeviceMessage(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) {
 	glog.Info(ctx, "处理设备消息...")
 
 	// 直接转发设备消息到客户端
@@ -515,19 +461,19 @@ func (c *ScrcpyController) handleDeviceMessage(ctx context.Context, wsConn *webs
 	}
 
 	// 解析消息类型，后续可以添加特定消息类型的处理
-	if len(data) > len(MAGIC_BYTES_MESSAGE) {
-		msgType := data[len(MAGIC_BYTES_MESSAGE)]
+	if len(data) > len(model.MAGIC_BYTES_MESSAGE) {
+		msgType := data[len(model.MAGIC_BYTES_MESSAGE)]
 		glog.Debug(ctx, "设备消息类型:", msgType)
 	}
 }
 
 // sendVideoSettings 发送视频设置消息
-func (c *ScrcpyController) sendVideoSettings(ctx context.Context, tcpConn net.Conn, deviceConn *DeviceConnection, settings VideoSettings) {
+func (c *ScrcpyController) sendVideoSettings(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, settings model.VideoSettings) {
 	// 创建视频设置消息
 	buffer := make([]byte, 36) // 增加缓冲区大小到36字节，确保有足够空间
 
 	// 设置消息类型
-	buffer[0] = TYPE_CHANGE_STREAM_PARAMETERS
+	buffer[0] = model.TYPE_CHANGE_STREAM_PARAMETERS
 
 	// 写入比特率 (4字节)
 	binary.BigEndian.PutUint32(buffer[1:5], uint32(settings.Bitrate))
@@ -577,12 +523,12 @@ func (c *ScrcpyController) sendVideoSettings(ctx context.Context, tcpConn net.Co
 }
 
 // sendTouchEvent 发送触摸事件
-func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn, deviceConn *DeviceConnection, action, x, y int) {
+func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, action, x, y int) {
 	// 创建触摸事件消息
 	buffer := make([]byte, 30) // 固定大小为30字节
 
 	// 设置消息类型
-	buffer[0] = TYPE_INJECT_TOUCH_EVENT
+	buffer[0] = model.TYPE_INJECT_TOUCH_EVENT
 
 	// 设置动作类型
 	buffer[1] = byte(action)
@@ -611,13 +557,13 @@ func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn,
 
 	// 写入压力值 (2字节)
 	pressure := uint16(0)
-	if action == ACTION_DOWN {
+	if action == model.ACTION_DOWN {
 		pressure = 0xFFFF
 	}
 	binary.BigEndian.PutUint16(buffer[22:24], pressure)
 
 	// 写入按钮值 (4字节)
-	binary.BigEndian.PutUint32(buffer[24:28], BUTTON_PRIMARY)
+	binary.BigEndian.PutUint32(buffer[24:28], model.BUTTON_PRIMARY)
 
 	// 发送消息
 	_, err := tcpConn.Write(buffer)
@@ -628,11 +574,11 @@ func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn,
 
 	actionName := "未知"
 	switch action {
-	case ACTION_DOWN:
+	case model.ACTION_DOWN:
 		actionName = "DOWN"
-	case ACTION_UP:
+	case model.ACTION_UP:
 		actionName = "UP"
-	case ACTION_MOVE:
+	case model.ACTION_MOVE:
 		actionName = "MOVE"
 	}
 
@@ -643,11 +589,11 @@ func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn,
 }
 
 // sendSwipeEvent 发送滑动事件
-func (c *ScrcpyController) sendSwipeEvent(ctx context.Context, tcpConn net.Conn, deviceConn *DeviceConnection, event SwipeEvent) {
+func (c *ScrcpyController) sendSwipeEvent(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, event model.SwipeEvent) {
 	glog.Info(ctx, "开始滑动:", "起点:", event.StartX, event.StartY, "终点:", event.EndX, event.EndY)
 
 	// 发送按下事件
-	c.sendTouchEvent(ctx, tcpConn, deviceConn, ACTION_DOWN, event.StartX, event.StartY)
+	c.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_DOWN, event.StartX, event.StartY)
 	time.Sleep(50 * time.Millisecond) // 短暂延迟
 
 	// 计算每一步的移动距离
@@ -669,12 +615,12 @@ func (c *ScrcpyController) sendSwipeEvent(ctx context.Context, tcpConn net.Conn,
 	for i := 1; i <= steps; i++ {
 		currentX := int(float64(event.StartX) + xStep*float64(i))
 		currentY := int(float64(event.StartY) + yStep*float64(i))
-		c.sendTouchEvent(ctx, tcpConn, deviceConn, ACTION_MOVE, currentX, currentY)
+		c.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_MOVE, currentX, currentY)
 		time.Sleep(time.Duration(stepDelay) * time.Millisecond)
 	}
 
 	// 发送抬起事件
-	c.sendTouchEvent(ctx, tcpConn, deviceConn, ACTION_UP, event.EndX, event.EndY)
+	c.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_UP, event.EndX, event.EndY)
 	glog.Info(ctx, "滑动事件已完成")
 }
 
@@ -731,7 +677,7 @@ func (c *ScrcpyController) checkPortForward(ctx context.Context, udid string, po
 func (c *ScrcpyController) connectToDevice(ctx context.Context, udid string, port int) (net.Conn, error) {
 	// 检查是否已经有连接
 	if conn, ok := c.deviceConnections.Load(udid); ok {
-		deviceConn := conn.(*DeviceConnection)
+		deviceConn := conn.(*model.DeviceConnection)
 		// 如果端口相同且连接仍然有效，复用连接
 		if deviceConn.Port == port {
 			// 简单测试连接是否仍然有效
@@ -871,7 +817,7 @@ func (c *ScrcpyController) CleanupConnections() {
 
 	now := time.Now()
 	c.deviceConnections.Range(func(key, value interface{}) bool {
-		deviceConn := value.(*DeviceConnection)
+		deviceConn := value.(*model.DeviceConnection)
 		// 如果连接超过30分钟未使用，关闭它
 		if now.Sub(deviceConn.LastUsed) > 30*time.Minute {
 			deviceConn.Conn.Close()
@@ -880,233 +826,4 @@ func (c *ScrcpyController) CleanupConnections() {
 		}
 		return true
 	})
-}
-
-// 用于解析 Exp-Golomb 编码的工具函数
-func readUe(data []byte, nLen uint, startBit *uint) uint {
-	// 计算前导零的个数
-	nZeroNum := 0
-	for *startBit < nLen*8 {
-		if (data[*startBit/8] & (0x80 >> (*startBit % 8))) > 0 {
-			break
-		}
-		nZeroNum++
-		*startBit++
-	}
-	*startBit++
-
-	// 计算结果
-	dwRet := uint(0)
-	for i := 0; i < nZeroNum; i++ {
-		dwRet <<= 1
-		if (data[*startBit/8] & (0x80 >> (*startBit % 8))) > 0 {
-			dwRet += 1
-		}
-		*startBit++
-	}
-	return (1 << uint(nZeroNum)) - 1 + dwRet
-}
-
-// 读取有符号的 Exp-Golomb 编码
-func readSe(data []byte, nLen uint, startBit *uint) int {
-	ueVal := readUe(data, nLen, startBit)
-	k := int64(ueVal)
-	nValue := int(math.Ceil(float64(k) / 2))
-	if ueVal%2 == 0 {
-		nValue = -nValue
-	}
-	return nValue
-}
-
-// 读取指定位数的比特
-func readBits(bitCount uint, data []byte, startBit *uint) uint {
-	dwRet := uint(0)
-	for i := uint(0); i < bitCount; i++ {
-		dwRet <<= 1
-		if (data[*startBit/8] & (0x80 >> (*startBit % 8))) > 0 {
-			dwRet += 1
-		}
-		*startBit++
-	}
-	return dwRet
-}
-
-// 处理防竞争机制
-func deEmulationPrevention(data []byte) []byte {
-	size := len(data)
-	tmpData := make([]byte, size)
-	copy(tmpData, data)
-
-	j := 0
-	for i := 0; i < size-2; i++ {
-		if i+2 < size &&
-			tmpData[i] == 0x00 &&
-			tmpData[i+1] == 0x00 &&
-			tmpData[i+2] == 0x03 {
-			tmpData[j] = tmpData[i]
-			tmpData[j+1] = tmpData[i+1]
-			i += 2
-			j += 2
-		} else {
-			tmpData[j] = tmpData[i]
-			j++
-		}
-	}
-	// 复制剩余的字节
-	for i := size - 2; i < size; i++ {
-		if j < size {
-			tmpData[j] = data[i]
-			j++
-		}
-	}
-	return tmpData[:j]
-}
-
-type SPSInfo struct {
-	ProfileIdc                uint
-	ConstraintSetFlags        uint
-	LevelIdc                  uint
-	PicWidthInMbsMinus1       uint
-	PicHeightInMapUnitsMinus1 uint
-	FrameMbsOnlyFlag          uint
-	FrameCropLeftOffset       uint
-	FrameCropRightOffset      uint
-	FrameCropTopOffset        uint
-	FrameCropBottomOffset     uint
-	Sar                       [2]uint // Sample Aspect Ratio
-}
-
-func parseSPS(data []byte) (*SPSInfo, error) {
-	if len(data) < 5 {
-		return nil, fmt.Errorf("invalid SPS data length")
-	}
-
-	// 去除防竞争字节
-	cleanData := deEmulationPrevention(data[4:]) // 跳过 NAL header
-	var startBit uint = 0
-	nLen := uint(len(cleanData))
-
-	info := &SPSInfo{}
-
-	// 跳过 forbidden_zero_bit, nal_ref_idc
-	readBits(3, cleanData, &startBit)
-
-	// 检查 NAL unit type 是否为 SPS (7)
-	nalUnitType := readBits(5, cleanData, &startBit)
-	if nalUnitType != 7 {
-		return nil, fmt.Errorf("not a SPS NAL unit")
-	}
-
-	info.ProfileIdc = readBits(8, cleanData, &startBit)
-	info.ConstraintSetFlags = readBits(8, cleanData, &startBit)
-	info.LevelIdc = readBits(8, cleanData, &startBit)
-
-	// 跳过 seq_parameter_set_id
-	readUe(cleanData, nLen, &startBit)
-
-	// 处理高级配置
-	if info.ProfileIdc == 100 || info.ProfileIdc == 110 ||
-		info.ProfileIdc == 122 || info.ProfileIdc == 144 {
-		chromaFormatIdc := readUe(cleanData, nLen, &startBit)
-		if chromaFormatIdc == 3 {
-			readBits(1, cleanData, &startBit) // residual_colour_transform_flag
-		}
-		readUe(cleanData, nLen, &startBit) // bit_depth_luma_minus8
-		readUe(cleanData, nLen, &startBit) // bit_depth_chroma_minus8
-		readBits(1, cleanData, &startBit)  // qpprime_y_zero_transform_bypass_flag
-
-		seqScalingMatrixPresentFlag := readBits(1, cleanData, &startBit)
-		if seqScalingMatrixPresentFlag > 0 {
-			for i := 0; i < 8; i++ {
-				if readBits(1, cleanData, &startBit) > 0 {
-					// 跳过缩放列表
-					for j := 0; j < 64; j++ {
-						readUe(cleanData, nLen, &startBit)
-					}
-				}
-			}
-		}
-	}
-
-	readUe(cleanData, nLen, &startBit) // log2_max_frame_num_minus4
-	picOrderCntType := readUe(cleanData, nLen, &startBit)
-
-	if picOrderCntType == 0 {
-		readUe(cleanData, nLen, &startBit)
-	} else if picOrderCntType == 1 {
-		readBits(1, cleanData, &startBit)
-		readSe(cleanData, nLen, &startBit)
-		readSe(cleanData, nLen, &startBit)
-		numRefFramesInPicOrderCntCycle := readUe(cleanData, nLen, &startBit)
-		for i := uint(0); i < numRefFramesInPicOrderCntCycle; i++ {
-			readSe(cleanData, nLen, &startBit)
-		}
-	}
-
-	readUe(cleanData, nLen, &startBit) // max_num_ref_frames
-	readBits(1, cleanData, &startBit)  // gaps_in_frame_num_value_allowed_flag
-
-	info.PicWidthInMbsMinus1 = readUe(cleanData, nLen, &startBit)
-	info.PicHeightInMapUnitsMinus1 = readUe(cleanData, nLen, &startBit)
-
-	info.FrameMbsOnlyFlag = readBits(1, cleanData, &startBit)
-	if info.FrameMbsOnlyFlag == 0 {
-		readBits(1, cleanData, &startBit) // mb_adaptive_frame_field_flag
-	}
-
-	readBits(1, cleanData, &startBit) // direct_8x8_inference_flag
-
-	frameCroppingFlag := readBits(1, cleanData, &startBit)
-	if frameCroppingFlag > 0 {
-		info.FrameCropLeftOffset = readUe(cleanData, nLen, &startBit)
-		info.FrameCropRightOffset = readUe(cleanData, nLen, &startBit)
-		info.FrameCropTopOffset = readUe(cleanData, nLen, &startBit)
-		info.FrameCropBottomOffset = readUe(cleanData, nLen, &startBit)
-	}
-
-	vuiParametersPresentFlag := readBits(1, cleanData, &startBit)
-	if vuiParametersPresentFlag > 0 {
-		aspectRatioInfoPresentFlag := readBits(1, cleanData, &startBit)
-		if aspectRatioInfoPresentFlag > 0 {
-			aspectRatioIdc := readBits(8, cleanData, &startBit)
-			if aspectRatioIdc == 255 { // Extended_SAR
-				info.Sar[0] = readBits(16, cleanData, &startBit) // sar_width
-				info.Sar[1] = readBits(16, cleanData, &startBit) // sar_height
-			} else if aspectRatioIdc < 17 {
-				// 使用预定义的 SAR 值
-				info.Sar = getPredefinedSAR(aspectRatioIdc)
-			}
-		}
-	}
-
-	return info, nil
-}
-
-// 获取预定义的 SAR 值
-func getPredefinedSAR(aspectRatioIdc uint) [2]uint {
-	// 根据 H.264 标准定义的预设 SAR 值
-	predefinedSAR := [][2]uint{
-		{0, 0},    // Unspecified
-		{1, 1},    // 1:1
-		{12, 11},  // 12:11
-		{10, 11},  // 10:11
-		{16, 11},  // 16:11
-		{40, 33},  // 40:33
-		{24, 11},  // 24:11
-		{20, 11},  // 20:11
-		{32, 11},  // 32:11
-		{80, 33},  // 80:33
-		{18, 11},  // 18:11
-		{15, 11},  // 15:11
-		{64, 33},  // 64:33
-		{160, 99}, // 160:99
-		{4, 3},    // 4:3
-		{3, 2},    // 3:2
-		{2, 1},    // 2:1
-	}
-
-	if aspectRatioIdc < uint(len(predefinedSAR)) {
-		return predefinedSAR[aspectRatioIdc]
-	}
-	return [2]uint{0, 0}
 }
