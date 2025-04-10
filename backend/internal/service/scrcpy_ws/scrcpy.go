@@ -115,10 +115,26 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 
 	// 创建通道用于同步goroutine
 	done := make(chan struct{})
+	var doneClosed bool
+	var doneMutex sync.Mutex
 
 	// 从WebSocket接收消息并转发到TCP连接
 	go func() {
-		defer close(done)
+		defer func() {
+			// 使用recover防止关闭已关闭通道导致的panic
+			if r := recover(); r != nil {
+				glog.Warning(ctx, "关闭通道时发生panic:", r)
+			}
+
+			// 安全地关闭通道，确保只关闭一次
+			doneMutex.Lock()
+			if !doneClosed {
+				close(done)
+				doneClosed = true
+			}
+			doneMutex.Unlock()
+		}()
+
 		for {
 			// 读取WebSocket消息
 			messageType, message, err := wsConn.ReadMessage()
@@ -190,7 +206,13 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 				case <-done:
 					return
 				default:
-					close(done)
+					// 安全地关闭通道，确保只关闭一次
+					doneMutex.Lock()
+					if !doneClosed {
+						close(done)
+						doneClosed = true
+					}
+					doneMutex.Unlock()
 					return
 				}
 			}
