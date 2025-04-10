@@ -242,41 +242,110 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		// 处理触摸事件
 		var touchEvent model.TouchEvent
 		if data, ok := command["data"].(map[string]interface{}); ok {
-			touchEvent.Action = int(data["action"].(float64))
-			touchEvent.X = int(data["x"].(float64))
-			touchEvent.Y = int(data["y"].(float64))
+			// 检查各字段是否存在
+			xVal, xOk := data["x"].(float64)
+			yVal, yOk := data["y"].(float64)
+			actionVal, actionOk := data["action"].(float64)
+
+			if !xOk || !yOk || !actionOk {
+				glog.Error(ctx, "触摸事件缺少必要字段或字段类型错误",
+					"x存在:", xOk,
+					"y存在:", yOk,
+					"action存在:", actionOk)
+				return
+			}
+
+			touchEvent.Action = int(actionVal)
+			touchEvent.X = int(xVal)
+			touchEvent.Y = int(yVal)
 			s.sendTouchEvent(ctx, tcpConn, deviceConn, touchEvent.Action, touchEvent.X, touchEvent.Y)
 		}
 	case "click":
 		// 处理点击事件
 		var clickEvent model.ClickEvent
 		if data, ok := command["data"].(map[string]interface{}); ok {
-			clickEvent.X = int(data["x"].(float64))
-			clickEvent.Y = int(data["y"].(float64))
-			clickEvent.Duration = int(data["duration"].(float64))
+			// 检查各字段是否存在
+			xVal, xOk := data["x"].(float64)
+			yVal, yOk := data["y"].(float64)
+
+			if !xOk || !yOk {
+				glog.Error(ctx, "点击事件缺少必要字段或字段类型错误",
+					"x存在:", xOk,
+					"y存在:", yOk)
+				return
+			}
+
+			clickEvent.X = int(xVal)
+			clickEvent.Y = int(yVal)
+
+			// duration是可选字段，有默认值
+			if durationVal, durationOk := data["duration"].(float64); durationOk {
+				clickEvent.Duration = int(durationVal)
+			}
+
 			s.sendClickEvent(ctx, tcpConn, deviceConn, clickEvent)
 		}
 	case "swipe":
 		// 处理滑动事件
 		var swipeEvent model.SwipeEvent
 		if data, ok := command["data"].(map[string]interface{}); ok {
-			swipeEvent.StartX = int(data["startX"].(float64))
-			swipeEvent.StartY = int(data["startY"].(float64))
-			swipeEvent.EndX = int(data["endX"].(float64))
-			swipeEvent.EndY = int(data["endY"].(float64))
-			swipeEvent.Duration = int(data["duration"].(float64))
-			swipeEvent.Steps = int(data["steps"].(float64))
+			// 检查各字段是否存在
+			startXVal, startXOk := data["startX"].(float64)
+			startYVal, startYOk := data["startY"].(float64)
+			endXVal, endXOk := data["endX"].(float64)
+			endYVal, endYOk := data["endY"].(float64)
+
+			if !startXOk || !startYOk || !endXOk || !endYOk {
+				glog.Error(ctx, "滑动事件缺少必要字段或字段类型错误",
+					"startX存在:", startXOk,
+					"startY存在:", startYOk,
+					"endX存在:", endXOk,
+					"endY存在:", endYOk)
+				return
+			}
+
+			swipeEvent.StartX = int(startXVal)
+			swipeEvent.StartY = int(startYVal)
+			swipeEvent.EndX = int(endXVal)
+			swipeEvent.EndY = int(endYVal)
+
+			// duration和steps是可选字段，有默认值
+			if durationVal, durationOk := data["duration"].(float64); durationOk {
+				swipeEvent.Duration = int(durationVal)
+			}
+
+			if stepsVal, stepsOk := data["steps"].(float64); stepsOk {
+				swipeEvent.Steps = int(stepsVal)
+			}
+
 			s.sendSwipeEvent(ctx, tcpConn, deviceConn, swipeEvent)
 		}
 	case "videoSettings":
 		// 处理视频设置
 		var videoSettings model.VideoSettings
 		if data, ok := command["data"].(map[string]interface{}); ok {
-			videoSettings.Bitrate = int(data["bitrate"].(float64))
-			videoSettings.MaxFps = int(data["maxFps"].(float64))
-			videoSettings.IFrameInterval = int(data["iFrameInterval"].(float64))
-			videoSettings.Width = int(data["width"].(float64))
-			videoSettings.Height = int(data["height"].(float64))
+			// 检查各字段是否存在
+			bitrateVal, bitrateOk := data["bitrate"].(float64)
+			maxFpsVal, maxFpsOk := data["maxFps"].(float64)
+			iFrameIntervalVal, iFrameIntervalOk := data["iFrameInterval"].(float64)
+			widthVal, widthOk := data["width"].(float64)
+			heightVal, heightOk := data["height"].(float64)
+
+			if !bitrateOk || !maxFpsOk || !iFrameIntervalOk || !widthOk || !heightOk {
+				glog.Error(ctx, "视频设置缺少必要字段或字段类型错误",
+					"bitrate存在:", bitrateOk,
+					"maxFps存在:", maxFpsOk,
+					"iFrameInterval存在:", iFrameIntervalOk,
+					"width存在:", widthOk,
+					"height存在:", heightOk)
+				return
+			}
+
+			videoSettings.Bitrate = int(bitrateVal)
+			videoSettings.MaxFps = int(maxFpsVal)
+			videoSettings.IFrameInterval = int(iFrameIntervalVal)
+			videoSettings.Width = int(widthVal)
+			videoSettings.Height = int(heightVal)
 			s.sendVideoSettings(ctx, tcpConn, deviceConn, videoSettings)
 		}
 	default:
