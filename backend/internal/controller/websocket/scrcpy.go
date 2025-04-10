@@ -67,6 +67,8 @@ type DeviceConnection struct {
 	LastUsed          time.Time // 最后使用时间
 	ScreenWidth       int       // 屏幕宽度
 	ScreenHeight      int       // 屏幕高度
+	VideoWidth        int       // 视频实际宽度
+	VideoHeight       int       // 视频实际高度
 	ClientId          int       // 客户端ID
 	HasInitInfo       bool      // 是否已接收初始化信息
 	VideoSettingsSent bool      // 是否已发送视频设置
@@ -197,6 +199,8 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 		LastUsed:          time.Now(),
 		ScreenWidth:       0,
 		ScreenHeight:      0,
+		VideoWidth:        0,
+		VideoHeight:       0,
 		ClientId:          -1,
 		HasInitInfo:       false,
 		VideoSettingsSent: false,
@@ -417,8 +421,8 @@ func (c *ScrcpyController) handleSpecialMessages(ctx context.Context, wsConn *we
 			}
 
 			// 更新设备连接的视频尺寸
-			deviceConn.ScreenWidth = int(width)
-			deviceConn.ScreenHeight = int(height)
+			deviceConn.VideoWidth = int(width)
+			deviceConn.VideoHeight = int(height)
 
 			// 构建编解码器字符串
 			codec := fmt.Sprintf("avc1.%02X%02X%02X",
@@ -428,7 +432,7 @@ func (c *ScrcpyController) handleSpecialMessages(ctx context.Context, wsConn *we
 
 			glog.Info(ctx, "从视频帧解析到实际编码尺寸",
 				"原尺寸", fmt.Sprintf("%d x %d", originalWidth, originalHeight),
-				"新尺寸", fmt.Sprintf("%d x %d", width, height),
+				"新尺寸", fmt.Sprintf("%d x %d", deviceConn.VideoWidth, deviceConn.VideoHeight),
 				"编解码器", codec)
 
 			// 向客户端发送视频尺寸更新消息
@@ -591,11 +595,19 @@ func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn,
 	// 写入Y坐标 (4字节)
 	binary.BigEndian.PutUint32(buffer[14:18], uint32(y))
 
-	// 写入屏幕宽度 (2字节) - 使用固定值
-	binary.BigEndian.PutUint16(buffer[18:20], 0x02d0)
+	// 写入屏幕宽度 (2字节) - 使用实际视频宽度
+	if deviceConn.VideoWidth > 0 {
+		binary.BigEndian.PutUint16(buffer[18:20], uint16(deviceConn.VideoWidth))
+	} else {
+		binary.BigEndian.PutUint16(buffer[18:20], uint16(deviceConn.ScreenWidth))
+	}
 
-	// 写入屏幕高度 (2字节) - 使用固定值
-	binary.BigEndian.PutUint16(buffer[20:22], 0x04c0)
+	// 写入屏幕高度 (2字节) - 使用实际视频高度
+	if deviceConn.VideoHeight > 0 {
+		binary.BigEndian.PutUint16(buffer[20:22], uint16(deviceConn.VideoHeight))
+	} else {
+		binary.BigEndian.PutUint16(buffer[20:22], uint16(deviceConn.ScreenHeight))
+	}
 
 	// 写入压力值 (2字节)
 	pressure := uint16(0)
@@ -624,7 +636,10 @@ func (c *ScrcpyController) sendTouchEvent(ctx context.Context, tcpConn net.Conn,
 		actionName = "MOVE"
 	}
 
-	glog.Info(ctx, "触摸事件已发送", "类型:", actionName, "坐标:", x, y)
+	glog.Info(ctx, "触摸事件已发送",
+		"类型:", actionName,
+		"坐标:", x, y,
+		"视频尺寸:", deviceConn.VideoWidth, "x", deviceConn.VideoHeight)
 }
 
 // sendSwipeEvent 发送滑动事件
