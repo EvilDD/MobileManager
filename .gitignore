@@ -1,2 +1,5 @@
 /backend/logs/*.log
 *.apk
+*.png
+*.npy
+*.h264

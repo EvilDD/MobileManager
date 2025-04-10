@@ -301,7 +301,7 @@ func (c *ScrcpyController) Handler(r *ghttp.Request) {
 				glog.Error(ctx, "向WebSocket写入数据失败:", err)
 				return
 			}
-			glog.Debug(ctx, "从设备转发的消息大小:", n)
+			// glog.Debug(ctx, "从设备转发的消息大小:", n)
 		}
 	}()
 
