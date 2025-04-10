@@ -67,6 +67,13 @@ type SwipeEvent struct {
 	Steps    int `json:"steps"`
 }
 
+// ClickEvent 点击事件结构
+type ClickEvent struct {
+	X        int `json:"x"`
+	Y        int `json:"y"`
+	Duration int `json:"duration"` // 点击持续时间(毫秒)
+}
+
 // VideoSettings 视频设置结构
 type VideoSettings struct {
 	Bitrate        int `json:"bitrate"`
