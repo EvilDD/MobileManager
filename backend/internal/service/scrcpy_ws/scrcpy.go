@@ -25,6 +25,8 @@ type ScrcpyService struct {
 	deviceConnections sync.Map
 	// 保护deviceConnections的互斥锁
 	connMutex sync.RWMutex
+	// 消息发送锁
+	sendMutex sync.Map
 }
 
 // NewScrcpyService 创建一个新的ScrcpyService
@@ -35,6 +37,14 @@ func NewScrcpyService() *ScrcpyService {
 // HandleConnection 处理WebSocket连接
 func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.Conn, udid string, port int) error {
 	glog.Info(ctx, "收到WebSocket连接请求", "设备ID:", udid, "端口:", port)
+
+	// 获取或创建消息发送锁
+	var sendMutex sync.Mutex
+	if v, ok := s.sendMutex.Load(udid); ok {
+		sendMutex = v.(sync.Mutex)
+	} else {
+		s.sendMutex.Store(udid, sendMutex)
+	}
 
 	// 预先检查ADB端口转发是否正确设置
 	if err := s.checkPortForward(ctx, udid, port); err != nil {
@@ -53,7 +63,9 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 		}
 
 		errorJSON, _ := json.Marshal(errorMsg)
+		sendMutex.Lock()
 		wsConn.WriteMessage(websocket.TextMessage, errorJSON)
+		sendMutex.Unlock()
 
 		return err
 	}
@@ -76,7 +88,9 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 		}
 
 		errorJSON, _ := json.Marshal(errorMsg)
+		sendMutex.Lock()
 		wsConn.WriteMessage(websocket.TextMessage, errorJSON)
+		sendMutex.Unlock()
 
 		return err
 	}
@@ -111,7 +125,12 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 		},
 	}
 	successJSON, _ := json.Marshal(successMsg)
+	sendMutex.Lock()
 	wsConn.WriteMessage(websocket.TextMessage, successJSON)
+	sendMutex.Unlock()
+
+	// 创建消息队列通道
+	msgQueue := make(chan []byte, 1000) // 使用带缓冲的通道存储消息
 
 	// 创建通道用于同步goroutine
 	done := make(chan struct{})
@@ -175,7 +194,7 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 		}
 	}()
 
-	// 从TCP连接接收消息并转发到WebSocket
+	// 从TCP连接接收消息并放入队列
 	go func() {
 		buffer := make([]byte, 32*1024) // 32KB的缓冲区
 		for {
@@ -200,7 +219,9 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 					},
 				}
 				disconnectJSON, _ := json.Marshal(disconnectMsg)
+				sendMutex.Lock()
 				wsConn.WriteMessage(websocket.TextMessage, disconnectJSON)
+				sendMutex.Unlock()
 
 				select {
 				case <-done:
@@ -220,18 +241,48 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 			// 更新最后使用时间
 			deviceConn.LastUsed = time.Now()
 
-			// 获取接收到的数据
-			received := buffer[:n]
+			// 获取接收到的数据（深拷贝以防止buffer被重用导致数据污染）
+			received := make([]byte, n)
+			copy(received, buffer[:n])
 
-			// 处理特殊消息类型
-			if s.handleSpecialMessages(ctx, wsConn, deviceConn, received) {
-				continue
+			// 将接收到的数据放入消息队列
+			select {
+			case msgQueue <- received:
+				// 消息成功加入队列
+			default:
+				// 队列已满，可能导致消息丢失，这里记录警告但仍然尝试处理此消息
+				glog.Warning(ctx, "消息队列已满，可能会导致消息丢失")
+				// 尝试丢弃一个旧消息并加入新消息
+				select {
+				case <-msgQueue: // 丢弃最旧的消息
+					msgQueue <- received
+				default:
+					// 如果无法丢弃，记录错误但不中断连接
+					glog.Error(ctx, "无法处理更多消息")
+				}
 			}
+		}
+	}()
 
-			// 转发到WebSocket
-			err = wsConn.WriteMessage(websocket.BinaryMessage, received)
-			if err != nil {
-				glog.Error(ctx, "向WebSocket写入数据失败:", err)
+	// 处理消息队列，有序地发送到WebSocket
+	go func() {
+		for {
+			select {
+			case data := <-msgQueue:
+				// 处理特殊消息类型
+				isSpecial := s.handleSpecialMessages(ctx, wsConn, deviceConn, data)
+
+				// 如果不是特殊消息或特殊消息需要转发，则转发到WebSocket
+				if !isSpecial {
+					sendMutex.Lock()
+					err := wsConn.WriteMessage(websocket.BinaryMessage, data)
+					sendMutex.Unlock()
+					if err != nil {
+						glog.Error(ctx, "向WebSocket写入数据失败:", err)
+						return
+					}
+				}
+			case <-done:
 				return
 			}
 		}
