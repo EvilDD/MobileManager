@@ -377,16 +377,23 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 
 // handleSpecialMessages 处理特殊消息类型
 func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) bool {
+	// 标记是否处理了特殊消息
+	isSpecialMessage := false
+
 	// 检查是否是初始化消息
 	if len(data) > len(model.MAGIC_BYTES_INITIAL) && strings.HasPrefix(string(data), model.MAGIC_BYTES_INITIAL) {
 		s.handleInitialInfo(ctx, wsConn, deviceConn, data)
-		return true
+		isSpecialMessage = true
+		// 注意：handleInitialInfo已经负责转发消息，不需要在这里再转发
+		return isSpecialMessage
 	}
 
 	// 检查是否是设备消息
 	if len(data) > len(model.MAGIC_BYTES_MESSAGE) && strings.HasPrefix(string(data), model.MAGIC_BYTES_MESSAGE) {
 		s.handleDeviceMessage(ctx, wsConn, deviceConn, data)
-		return true
+		isSpecialMessage = true
+		// 注意：handleDeviceMessage已经负责转发消息，不需要在这里再转发
+		return isSpecialMessage
 	}
 
 	// 检查是否是 SPS 数据
@@ -396,6 +403,7 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 			spsInfo, err := h264.ParseSPS(data)
 			if err != nil {
 				glog.Error(ctx, "解析 SPS 失败", "error", err)
+				// 返回false，让后续代码进行转发
 				return false
 			}
 
@@ -452,10 +460,21 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 			}
 			msgJSON, _ := json.Marshal(sizeUpdateMsg)
 			wsConn.WriteMessage(websocket.TextMessage, msgJSON)
+
+			// 重要变更：不返回true，以确保SPS帧也能被转发
+			isSpecialMessage = false
 		}
+
+		// // 也可以添加对PPS帧的识别和处理，但不拦截
+		// if nalType == 8 { // NAL type 8 表示 PPS
+		// 	glog.Debug(ctx, "检测到PPS帧，确保转发")
+		// 	// 不做特殊处理，只是记录日志
+		// 	isSpecialMessage = false
+		// }
 	}
 
-	return false
+	// 返回false，表示即使处理了特殊消息，也应该继续原始转发
+	return isSpecialMessage
 }
 
 // handleInitialInfo 处理初始化信息
