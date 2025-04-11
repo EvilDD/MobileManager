@@ -81,6 +81,7 @@ cd MobileManager
 ```bash
 cd backend
 go mod tidy
+mv backend\manifest\config\config.yaml.bak backend\manifest\config\config.yaml
 go run main.go
 ```
 
