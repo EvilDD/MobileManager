@@ -28,8 +28,7 @@
   import { ElMessage } from 'element-plus';
   import { startDeviceStream, stopDeviceStream } from '@/api/device';
   import { useUserStore } from '@/store/modules/user';
-  import H264Parser from 'h264-converter/dist/h264-parser';
-  import NALU from 'h264-converter/dist/util/NALU';
+  import { WebCodecsPlayer } from '../player/WebCodecsPlayer';
   
   const props = defineProps({
     deviceId: {
@@ -63,29 +62,8 @@
   // WebSocket 连接
   let wsConnection = null;
   
-  // 视频解码器
-  let videoDecoder = null;
-  
-  // 视频帧缓冲区
-  let videoBuffer = null;
-  
-  // 2D绘图上下文
-  let canvasContext = null;
-  
-  // 视频参数
-  const videoConfig = ref({
-    width: STREAM_WINDOW_CONFIG.DEFAULT_WIDTH,
-    height: STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT,
-    codec: 'avc1.42C01F'
-  });
-  
-  // 视频解码状态
-  const decoderState = ref({
-    initialized: false,
-    bufferedSPS: false,
-    bufferedPPS: false,
-    hadIDR: false
-  });
+  // WebCodecsPlayer 实例
+  let player = null;
   
   // 连接超时定时器
   let connectionTimeoutTimer = null;
@@ -102,282 +80,59 @@
   // 是否正在清理资源
   let isCleaningUp = false;
   
-  // 解析SPS数据获取视频参数
-  const parseSPS = (data) => {
-    try {
-      const {
-        profile_idc,
-        constraint_set_flags,
-        level_idc,
-        pic_width_in_mbs_minus1,
-        frame_crop_left_offset,
-        frame_crop_right_offset,
-        frame_mbs_only_flag,
-        pic_height_in_map_units_minus1,
-        frame_crop_top_offset,
-        frame_crop_bottom_offset,
-        sar,
-      } = H264Parser.parseSPS(data);
-
-      const sarScale = sar[0] / sar[1];
-      const codec = `avc1.${[profile_idc, constraint_set_flags, level_idc]
-        .map(v => v.toString(16).padStart(2, '0').toUpperCase())
-        .join('')}`;
-        
-      const width = Math.ceil(
-        ((pic_width_in_mbs_minus1 + 1) * 16 - frame_crop_left_offset * 2 - frame_crop_right_offset * 2) * sarScale,
-      );
-      
-      const height =
-        (2 - frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16 -
-        (frame_mbs_only_flag ? 2 : 4) * (frame_crop_top_offset + frame_crop_bottom_offset);
-        
-      return { codec, width, height };
-    } catch (err) {
-      console.error('解析SPS失败:', err);
-      return null;
-    }
-  };
-  
-  // 解码视频数据 - 完全参考wscrcpy的实现方式
-  const decodeVideoData = (data) => {
-    if (!videoDecoder || !data || data.length < 4) {
-      console.warn('无效的视频数据或解码器未初始化');
-      return;
-    }
-    
-    try {
-      // 与wscrcpy保持一致的类型提取方式
-      const type = data[4] & 31;
-      const isIDR = type === NALU.IDR;
-
-      // 处理SPS (序列参数集)
-      if (type === NALU.SPS) {
-        const params = parseSPS(data.subarray(4));
-        if (params) {
-          console.log('解析SPS结果:', params);
-          // 更新Canvas尺寸 - 与wscrcpy保持一致的尺寸处理
-          scaleCanvas(params.width, params.height);
-          // 配置解码器
-          const config = {
-            codec: params.codec,
-            optimizeForLatency: true,
-          };
-          videoDecoder.configure(config);
-        }
-        decoderState.value.bufferedSPS = true;
-        videoBuffer = addToBuffer(videoBuffer, data);
-        decoderState.value.hadIDR = false;
-        return;
-      } 
-      // 处理PPS (图像参数集)
-      else if (type === NALU.PPS) {
-        decoderState.value.bufferedPPS = true;
-        videoBuffer = addToBuffer(videoBuffer, data);
-        return;
-      } 
-      // 处理SEI (补充增强信息)
-      else if (type === NALU.SEI) {
-        // 跳过孤立的SEI - 这也是wscrcpy的处理方式
-        if (!decoderState.value.bufferedSPS || !decoderState.value.bufferedPPS) {
-          return;
-        }
-      }
-
-      // 添加到缓冲区
-      const array = addToBuffer(videoBuffer, data);
-      
-      // 关键：仅当积累了IDR帧时才触发解码，与wscrcpy一致
-      decoderState.value.hadIDR = decoderState.value.hadIDR || isIDR;
-      
-      // 重要！：精确匹配wscrcpy的解码条件判断
-      if (array && videoDecoder.state === 'configured' && decoderState.value.hadIDR) {
-        // 解码之前重置缓冲区
-        videoBuffer = undefined;
-        
-        // 重置标志位
-        decoderState.value.bufferedPPS = false;
-        decoderState.value.bufferedSPS = false;
-        
-        // 解码 - 使用固定时间戳0
-        videoDecoder.decode(
-          new EncodedVideoChunk({
-            type: 'key',
-            timestamp: 0,
-            data: array.buffer,
-          }),
-        );
-      }
-    } catch (err) {
-      console.error('处理视频数据错误:', err);
-    }
-  };
-
-  // 添加数据到缓冲区 - 完全参考wscrcpy的实现
-  const addToBuffer = (buffer, data) => {
-    let array;
-    if (buffer) {
-      array = new Uint8Array(buffer.byteLength + data.byteLength);
-      array.set(new Uint8Array(buffer));
-      array.set(new Uint8Array(data), buffer.byteLength);
-    } else {
-      array = new Uint8Array(data);
-    }
-    return array;
-  };
-  
-  // 缩放Canvas - 确保精确尺寸
-  const scaleCanvas = (width, height) => {
-    if (!streamCanvas.value || !canvasContext) return;
-    
-    console.log('原始视频尺寸:', { width, height });
-    
-    // 更新视频配置
-    videoConfig.value = {
-      width,
-      height,
-      codec: 'avc1.42001E'
-    };
-    
-    // 确保canvas尺寸精确匹配视频尺寸
-    // 重要：明确设置为准确的像素尺寸
-    streamCanvas.value.width = width;
-    streamCanvas.value.height = height;
-    
-    console.log('设置Canvas实际尺寸:', { 
-      width: streamCanvas.value.width, 
-      height: streamCanvas.value.height 
-    });
-    
-    // 重置变换矩阵
-    canvasContext.setTransform(1, 0, 0, 1, 0, 0);
-    
-    // 更新横屏状态
-    const newIsLandscape = width > height;
-    if (isLandscape.value !== newIsLandscape) {
-      isLandscape.value = newIsLandscape;
-    }
-    
-    // 在尺寸变化时触发事件
-    emit('orientation-change', {
-      deviceId: props.deviceId,
-      orientation: isLandscape.value ? 'landscape' : 'portrait',
-      width,
-      height
-    });
-  };
-  
-  // 新增：调整容器尺寸以匹配视频比例
-  const adjustContainerSize = (width, height) => {
-    const container = streamCanvas.value?.parentElement;
-    if (!container) return;
-    
-    // 设置容器尺寸，保持比例
-    const aspectRatio = width / height;
-    
-    // 根据横竖屏调整容器样式
-    if (isLandscape.value) {
-      container.style.aspectRatio = `${aspectRatio} / 1`;
-    } else {
-      container.style.aspectRatio = `${aspectRatio} / 1`;
-    }
-    
-    console.log('调整容器尺寸, 宽高比:', aspectRatio);
-  };
-  
-  // 初始化Canvas - 单独抽取这个函数
-  const initCanvas = (width, height) => {
-    if (!streamCanvas.value) return;
-    
-    streamCanvas.value.width = width;
-    streamCanvas.value.height = height;
-    canvasContext = streamCanvas.value.getContext('2d', {
-      alpha: false, // 禁用alpha通道可以提高性能
-      desynchronized: true // 减少延迟
-    });
-    
-    if (!canvasContext) {
-      handleConnectionError('无法获取Canvas 2D上下文');
-    }
-  };
-  
-  // 处理解码后的视频帧 - 精确渲染
-  const handleDecodedFrame = (frame) => {
-    // 如果组件正在关闭或清理中，不处理帧
-    if (userClosing || isCleaningUp) {
-      console.log('组件正在关闭或清理中，跳过帧渲染');
-      frame.close();
-      return;
-    }
-    
-    if (streamCanvas.value && canvasContext) {
-      try {
-        // 确保canvas尺寸与视频帧尺寸精确匹配
-        if (streamCanvas.value.width !== frame.codedWidth || 
-            streamCanvas.value.height !== frame.codedHeight) {
-          console.log(`调整Canvas尺寸以精确匹配帧: ${frame.codedWidth}x${frame.codedHeight}`);
-          streamCanvas.value.width = frame.codedWidth;
-          streamCanvas.value.height = frame.codedHeight;
-          
-          // 重置变换矩阵
-          canvasContext.setTransform(1, 0, 0, 1, 0, 0);
-        }
-        
-        // 清除整个Canvas
-        canvasContext.clearRect(0, 0, streamCanvas.value.width, streamCanvas.value.height);
-        
-        // 精确绘制
-        canvasContext.drawImage(frame, 0, 0);
-        
-        // 移除loading状态
-        if (loading.value) {
-          loading.value = false;
-          emit('success', props.deviceId, { initialConnect: true });
-        }
-      } catch (err) {
-        console.error('渲染帧错误:', err);
-      } finally {
-        frame.close();
-      }
-    } else {
-      console.warn('Canvas或上下文不可用');
-      frame.close();
-    }
-  };
-  
-  // 初始化视频解码器
-  const initDecoder = () => {
-    if (!window.VideoDecoder) {
-      handleConnectionError('您的浏览器不支持 VideoDecoder API');
+  // 检查浏览器支持
+  const checkBrowserSupport = () => {
+    if (!WebCodecsPlayer.isSupported()) {
+      handleConnectionError('您的浏览器不支持 WebCodecs API，无法播放视频流');
       return false;
     }
+    return true;
+  };
+  
+  // 初始化播放器
+  const initPlayer = () => {
+    if (!streamCanvas.value) return false;
     
     try {
-      // 关闭已存在的解码器
-      if (videoDecoder && videoDecoder.state !== 'closed') {
-        videoDecoder.close();
+      // 如果已存在播放器，先销毁
+      if (player) {
+        player.close();
+        player = null;
       }
       
-      videoDecoder = new VideoDecoder({
-        output: handleDecodedFrame,
-        error: (error) => {
-          console.error('解码器错误:', error);
+      // 创建新播放器实例
+      player = new WebCodecsPlayer({
+        canvas: streamCanvas.value,
+        onFirstFrameDecoded: () => {
+          console.log('收到首帧，连接成功');
+          loading.value = false;
+          emit('success', props.deviceId, { initialConnect: true });
+        },
+        onError: (error) => {
           handleConnectionError(`解码器错误: ${error.message}`);
+        },
+        onVideoResize: (size) => {
+          console.log(`视频尺寸变化: ${size.width}x${size.height}`);
+          // 更新横屏状态
+          const newIsLandscape = size.width > size.height;
+          if (isLandscape.value !== newIsLandscape) {
+            isLandscape.value = newIsLandscape;
+          }
+          
+          // 触发屏幕方向变化事件
+          emit('orientation-change', {
+            deviceId: props.deviceId,
+            orientation: isLandscape.value ? 'landscape' : 'portrait',
+            width: size.width,
+            height: size.height
+          });
         }
       });
       
-      // 重置状态
-      videoBuffer = undefined;
-      decoderState.value = {
-        initialized: false,
-        bufferedSPS: false,
-        bufferedPPS: false,
-        hadIDR: false
-      };
-      
       return true;
     } catch (err) {
-      handleConnectionError(`初始化解码器失败: ${err.message}`);
+      console.error('初始化播放器失败:', err);
+      handleConnectionError(`初始化播放器失败: ${err.message}`);
       return false;
     }
   };
@@ -390,16 +145,13 @@
     error.value = false;
     errorMessage.value = '';
     
-    // 重置解码器状态
-    decoderState.value = {
-      initialized: false,
-      bufferedSPS: false,
-      bufferedPPS: false,
-      hadIDR: false
-    };
-    
     // 触发事件指示正在加载中
     emit('loading-start', props.deviceId);
+    
+    // 检查浏览器支持
+    if (!checkBrowserSupport()) {
+      return;
+    }
     
     try {
       // 调用开始串流接口
@@ -421,11 +173,8 @@
       nextTick(() => {
         console.log('开始连接设备:', props.deviceId);
         
-        // 初始化Canvas
-        initCanvas(videoConfig.value.width, videoConfig.value.height);
-        
-        // 初始化解码器
-        if (initDecoder()) {
+        // 初始化播放器
+        if (initPlayer()) {
           // 连接WebSocket
           connectWebSocket(port);
         }
@@ -493,8 +242,10 @@
       }
     } else {
       // 二进制数据，处理视频流
-      // console.log('收到二进制数据, 大小:', event.data.byteLength, 'bytes');
-      decodeVideoData(new Uint8Array(event.data));
+      // 将二进制数据传递给WebCodecsPlayer解码
+      if (player) {
+        player.decode(new Uint8Array(event.data));
+      }
     }
   };
   
@@ -514,74 +265,32 @@
     if (connectionStabilityTimer) {
       clearTimeout(connectionStabilityTimer);
     }
+    
+    // 设置新的稳定期定时器
+    connectionStabilityTimer = setTimeout(() => {
+      isStabilizing = false;
+      // 如果稳定期结束仍然连接正常
+      if (!error.value && !loading.value) {
+        // 显示成功消息提示
+        ElMessage.success(`设备 ${props.deviceId} 连接成功`);
+      }
+      connectionStabilityTimer = null;
+    }, CONNECTION_STABILITY_PERIOD);
   };
   
   // 处理视频尺寸信息
   const handleVideoSizeInfo = (data) => {
     console.log(`收到视频尺寸信息: ${data.width}x${data.height}, 编解码器: ${data.codec}`);
     
-    // 更新视频配置
-    videoConfig.value = {
-      width: data.width,
-      height: data.height,
-      codec: data.codec || 'avc1.42001E' // 确保有默认编解码器
-    };
+    // 更新WebCodecsPlayer视频尺寸
+    if (player) {
+      player.updateVideoSize(data.width, data.height);
+    }
     
-    // 调整Canvas尺寸
-    scaleCanvas(data.width, data.height);
-    
-    // 配置解码器
-    if (videoDecoder && videoDecoder.state !== 'configured') {
-      try {
-        // 确保使用正确的编解码器配置
-        const codecConfig = {
-          codec: data.codec || 'avc1.42001E',
-          optimizeForLatency: true,
-          hardwareAcceleration: 'prefer-hardware'
-        };
-        
-        console.log('配置解码器:', codecConfig);
-        videoDecoder.configure(codecConfig);
-        decoderState.value.initialized = true;
-        console.log('视频解码器已配置完成');
-        
-        // 通知连接成功
-        loading.value = false;
-        
-        // 如果稳定期定时器存在，清除它
-        if (connectionStabilityTimer) {
-          clearTimeout(connectionStabilityTimer);
-        }
-        
-        // 设置新的稳定期定时器
-        connectionStabilityTimer = setTimeout(() => {
-          isStabilizing = false;
-          // 如果稳定期结束仍然连接正常，显示成功消息
-          if (!error.value) {
-            // 显示成功消息提示
-            ElMessage.success(`设备 ${props.deviceId} 连接成功`);
-            emit('success', props.deviceId, { initialConnect: true });
-            
-            // 检查是否横屏
-            if (data.width > data.height) {
-              isLandscape.value = true;
-            } else {
-              isLandscape.value = false;
-            }
-            
-            // 触发屏幕方向变化事件
-            emit('orientation-change', {
-              deviceId: props.deviceId,
-              orientation: isLandscape.value ? 'landscape' : 'portrait',
-              width: data.width,
-              height: data.height
-            });
-          }
-          connectionStabilityTimer = null;
-        }, CONNECTION_STABILITY_PERIOD);
-      } catch (err) {
-        handleConnectionError(`视频解码器配置失败: ${err.message}`);
-      }
+    // 检查是否横屏
+    const newIsLandscape = data.width > data.height;
+    if (isLandscape.value !== newIsLandscape) {
+      isLandscape.value = newIsLandscape;
     }
   };
   
@@ -651,17 +360,11 @@
       wsConnection = null;
     }
     
-    // 关闭已有的解码器
-    if (videoDecoder && videoDecoder.state !== 'closed') {
-      try {
-        videoDecoder.close();
-      } catch (err) {
-        console.error('关闭解码器失败:', err);
-      }
+    // 关闭已有的播放器
+    if (player) {
+      player.close();
+      player = null;
     }
-    
-    // 重置视频缓冲区
-    videoBuffer = null;
     
     // 短暂延迟后开始新连接
     setTimeout(() => {
@@ -725,34 +428,18 @@
     console.log('执行destroyConnection, 用户主动关闭:', userInitiated);
 
     try {
-      // 先停止解码操作
-      if (videoDecoder) {
-        // 1. 先重置解码状态，中断任何解码帧
-        decoderState.value = {
-          initialized: false,
-          bufferedSPS: false,
-          bufferedPPS: false,
-          hadIDR: false
-        };
-        
-        // 2. 正确关闭视频解码器，阻止新的解码操作
-        if (videoDecoder.state !== 'closed') {
-          try {
-            console.log('关闭视频解码器');
-            videoDecoder.close();
-          } catch (err) {
-            console.error('关闭解码器失败:', err);
-          }
+      // 关闭播放器
+      if (player) {
+        try {
+          console.log('关闭WebCodecsPlayer');
+          player.close();
+          player = null;
+        } catch (err) {
+          console.error('关闭播放器失败:', err);
         }
-        
-        // 3. 清除视频缓冲区和帧
-        videoBuffer = null;
       }
       
-      // 4. 清理canvas上下文引用
-      canvasContext = null;
-
-      // 5. 关闭WebSocket连接
+      // 关闭WebSocket连接
       if (wsConnection) {
         // 如果是用户主动关闭，阻止错误提示
         if (userInitiated) {
@@ -772,13 +459,13 @@
         wsConnection = null;
       }
       
-      // 6. 清理定时器
+      // 清理定时器
       clearConnectionTimeout();
       if (connectionStabilityTimer) {
         clearTimeout(connectionStabilityTimer);
       }
 
-      // 7. 最后调用服务器端停止流
+      // 最后调用服务器端停止流
       if (props.deviceId) {
         try {
           await stopDeviceStream(props.deviceId);
