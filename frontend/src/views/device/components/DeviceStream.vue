@@ -236,15 +236,40 @@
         } else if (jsonData.type === 'videoSize') {
           // 视频尺寸信息
           handleVideoSizeInfo(jsonData.data);
+        } else if (jsonData.type === 'error') {
+          // 处理错误信息
+          handleErrorMessage(jsonData.data);
         }
       } catch (err) {
         console.error('解析JSON消息失败:', err, event.data);
       }
     } else {
       // 二进制数据，处理视频流
-      // 将二进制数据传递给WebCodecsPlayer解码
       if (player) {
-        player.decode(new Uint8Array(event.data));
+        try {
+          // 确保数据是 ArrayBuffer
+          const videoData = new Uint8Array(event.data);
+          // 将二进制数据传递给WebCodecsPlayer解码
+          player.decode(videoData);
+        } catch (err) {
+          console.error('处理视频数据错误:', err);
+          if (err.message && err.message.includes('key frame is required')) {
+            console.warn('关键帧错误，尝试重置解码器状态');
+            // 调用播放器的重置方法
+            if (player && typeof player.reset === 'function') {
+              player.reset();
+            }
+            
+            // 如果连接稳定后出现此错误，考虑请求一个新的关键帧
+            if (!isStabilizing) {
+              // 显示一条温和的提示，不会打断用户体验
+              console.log('请求新的关键帧或等待下一个关键帧...');
+              
+              // 如果多次出现此错误，尝试重新连接
+              handleKeyFrameErrors();
+            }
+          }
+        }
       }
     }
   };
@@ -346,6 +371,13 @@
   const retryConnect = () => {
     console.log('重试连接设备:', props.deviceId);
     
+    // 清理关键帧错误计数
+    keyFrameErrorCount = 0;
+    if (keyFrameErrorTimer) {
+      clearTimeout(keyFrameErrorTimer);
+      keyFrameErrorTimer = null;
+    }
+    
     // 重置状态
     error.value = false;
     loading.value = true;
@@ -356,20 +388,43 @@
     
     // 关闭已有的WebSocket连接
     if (wsConnection) {
-      wsConnection.close();
+      // 移除事件处理器，防止触发错误回调
+      wsConnection.onclose = null;
+      wsConnection.onerror = null;
+      wsConnection.onmessage = null;
+      
+      try {
+        wsConnection.close(1000, "Manual retry");
+      } catch (err) {
+        console.error('关闭WebSocket连接失败:', err);
+      }
       wsConnection = null;
     }
     
     // 关闭已有的播放器
     if (player) {
-      player.close();
-      player = null;
+      try {
+        console.log('关闭播放器以重新连接');
+        player.close();
+      } catch (closeErr) {
+        console.error('关闭播放器失败:', closeErr);
+      } finally {
+        player = null;
+      }
     }
     
-    // 短暂延迟后开始新连接
-    setTimeout(() => {
-      startConnect();
-    }, 500);
+    // 确保Canvas准备就绪
+    streamCanvas.value && (streamCanvas.value.style.visibility = 'hidden');
+    
+    // 首先调用后端停止当前串流
+    stopDeviceStream(props.deviceId)
+      .catch(err => console.error('停止旧串流失败:', err))
+      .finally(() => {
+        // 无论停止成功与否，短暂延迟后开始新连接
+        setTimeout(() => {
+          startConnect();
+        }, 1000);
+      });
   };
   
   // 处理连接错误
@@ -393,6 +448,47 @@
     
     // 显示错误消息
     ElMessage.error(message);
+  };
+  
+  // 处理关键帧错误的计数和处理
+  let keyFrameErrorCount = 0;
+  let keyFrameErrorTimer = null;
+  
+  // 处理关键帧错误，如果短时间内多次出现则尝试重连
+  const handleKeyFrameErrors = () => {
+    keyFrameErrorCount++;
+    
+    // 清除已有计时器
+    if (keyFrameErrorTimer) {
+      clearTimeout(keyFrameErrorTimer);
+    }
+    
+    // 设置计时器，10秒后重置计数
+    keyFrameErrorTimer = setTimeout(() => {
+      keyFrameErrorCount = 0;
+      keyFrameErrorTimer = null;
+    }, 10000);
+    
+    // 如果短时间内错误超过3次，尝试重新连接
+    if (keyFrameErrorCount >= 3) {
+      console.warn(`短时间内出现${keyFrameErrorCount}次关键帧错误，尝试重新连接`);
+      ElMessage.warning('视频流连接不稳定，正在尝试重新连接...');
+      retryConnect();
+      keyFrameErrorCount = 0;
+    }
+  };
+  
+  // 处理错误消息
+  const handleErrorMessage = (data) => {
+    console.error('收到错误消息:', data);
+    ElMessage.error(data.message || '串流错误');
+    
+    // 如果是关键帧相关错误，尝试重置解码器状态
+    if (data.code === 'KEY_FRAME_ERROR' && player) {
+      if (typeof player.reset === 'function') {
+        player.reset();
+      }
+    }
   };
   
   // 组件挂载时，自动连接
