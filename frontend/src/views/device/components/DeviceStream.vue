@@ -39,6 +39,14 @@
     autoConnect: {
       type: Boolean,
       default: true
+    },
+    serverUrl: {
+      type: String,
+      default: import.meta.env.VITE_WSCRCPY_SERVER || 'http://localhost:8000'
+    },
+    skipUnmountDestroy: {
+      type: Boolean,
+      default: false
     }
   });
   
@@ -88,6 +96,11 @@
   let connectionStabilityTimer = null;
   const CONNECTION_STABILITY_PERIOD = 1000; // 连接成功后的稳定期(毫秒)
   let isStabilizing = false; // 是否处于连接稳定期
+  
+  // 声明userClosing标志
+  let userClosing = false;
+  // 是否正在清理资源
+  let isCleaningUp = false;
   
   // 解析SPS数据获取视频参数
   const parseSPS = (data) => {
@@ -290,6 +303,13 @@
   
   // 处理解码后的视频帧 - 精确渲染
   const handleDecodedFrame = (frame) => {
+    // 如果组件正在关闭或清理中，不处理帧
+    if (userClosing || isCleaningUp) {
+      console.log('组件正在关闭或清理中，跳过帧渲染');
+      frame.close();
+      return;
+    }
+    
     if (streamCanvas.value && canvasContext) {
       try {
         // 确保canvas尺寸与视频帧尺寸精确匹配
@@ -568,16 +588,30 @@
   // WebSocket 错误处理
   const handleWsError = (event) => {
     console.error('WebSocket错误:', event);
-    handleConnectionError('WebSocket连接错误');
+    // 只有在非用户主动关闭的情况下才显示错误
+    if (!userClosing) {
+      handleConnectionError('WebSocket连接错误');
+    }
   };
   
   // WebSocket 关闭处理
   const handleWsClose = (event) => {
-    console.log('WebSocket连接关闭:', event.code, event.reason);
+    console.log('WebSocket连接关闭:', event.code, event.reason, '用户主动关闭:', userClosing);
+    
+    // 如果是用户主动关闭，不显示错误
+    if (userClosing) {
+      console.log('用户主动关闭，不显示错误');
+      return;
+    }
     
     // 如果不是手动关闭且没有错误，则认为连接意外断开
     if (!error.value) {
-      handleConnectionError(`连接断开: ${event.reason || '未知原因'} (代码: ${event.code})`);
+      // 如果是正常关闭(1000)或用户主动关闭(1001)，不显示错误
+      if (event.code === 1000 || event.code === 1001) {
+        console.log('WebSocket正常关闭');
+      } else {
+        handleConnectionError(`连接断开: ${event.reason || '未知原因'} (代码: ${event.code})`);
+      }
     }
   };
   
@@ -667,39 +701,106 @@
   
   // 组件卸载前，清理资源
   onBeforeUnmount(async () => {
-    if (props.deviceId) {
-      try {
-        await stopDeviceStream(props.deviceId);
-      } catch (err) {
-        console.error('停止串流失败:', err);
-      }
-    }
-    
-    // 清理定时器
-    clearConnectionTimeout();
-    if (connectionStabilityTimer) {
-      clearTimeout(connectionStabilityTimer);
-    }
-    
-    // 关闭WebSocket连接
-    if (wsConnection) {
-      wsConnection.close();
-      wsConnection = null;
-    }
-    
-    // 关闭视频解码器
-    if (videoDecoder && videoDecoder.state !== 'closed') {
-      try {
-        videoDecoder.close();
-      } catch (err) {
-        console.error('关闭解码器失败:', err);
-      }
+    // 如果设置了跳过unmount销毁标志，或已经是用户主动关闭状态，则不执行清理
+    if (!props.skipUnmountDestroy && !userClosing) {
+      await destroyConnection();
+    } else {
+      console.log('跳过组件卸载时的destroyConnection调用');
     }
   });
   
+  // 销毁WebSocket连接
+  const destroyConnection = async (userInitiated = false) => {
+    // 如果已经在清理中，则不重复执行
+    if (isCleaningUp) {
+      console.log('已经在清理中，跳过重复的destroyConnection调用');
+      return Promise.resolve();
+    }
+    
+    // 设置用户关闭标志
+    userClosing = userInitiated;
+    // 设置清理中状态
+    isCleaningUp = true;
+    
+    console.log('执行destroyConnection, 用户主动关闭:', userInitiated);
+
+    try {
+      // 先停止解码操作
+      if (videoDecoder) {
+        // 1. 先重置解码状态，中断任何解码帧
+        decoderState.value = {
+          initialized: false,
+          bufferedSPS: false,
+          bufferedPPS: false,
+          hadIDR: false
+        };
+        
+        // 2. 正确关闭视频解码器，阻止新的解码操作
+        if (videoDecoder.state !== 'closed') {
+          try {
+            console.log('关闭视频解码器');
+            videoDecoder.close();
+          } catch (err) {
+            console.error('关闭解码器失败:', err);
+          }
+        }
+        
+        // 3. 清除视频缓冲区和帧
+        videoBuffer = null;
+      }
+      
+      // 4. 清理canvas上下文引用
+      canvasContext = null;
+
+      // 5. 关闭WebSocket连接
+      if (wsConnection) {
+        // 如果是用户主动关闭，阻止错误提示
+        if (userInitiated) {
+          console.log('用户主动关闭，移除WebSocket事件监听');
+          // 完全移除事件处理器，防止触发错误提示
+          wsConnection.onclose = null;
+          wsConnection.onerror = null;
+          wsConnection.onmessage = null;
+        }
+        
+        try {
+          // 使用1000正常关闭码关闭连接
+          wsConnection.close(1000, "User closed");
+        } catch (err) {
+          console.error('关闭WebSocket连接失败:', err);
+        }
+        wsConnection = null;
+      }
+      
+      // 6. 清理定时器
+      clearConnectionTimeout();
+      if (connectionStabilityTimer) {
+        clearTimeout(connectionStabilityTimer);
+      }
+
+      // 7. 最后调用服务器端停止流
+      if (props.deviceId) {
+        try {
+          await stopDeviceStream(props.deviceId);
+        } catch (err) {
+          console.error('停止串流失败:', err);
+        }
+      }
+    } catch (err) {
+      console.error('关闭资源时出错:', err);
+    } finally {
+      // 确保清理完成后重置标志
+      isCleaningUp = false;
+    }
+    
+    // 返回承诺，确保异步操作完成
+    return Promise.resolve();
+  };
+  
   // 暴露方法给父组件
   defineExpose({
-    retryConnect
+    retryConnect,
+    destroyConnection
   });
   </script>
   

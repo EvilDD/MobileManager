@@ -12,17 +12,17 @@
       <div class="phone-frame" :class="{ 'landscape': isLandscape }">
         <div class="phone-notch" />
         <device-stream 
-          v-if="visible && deviceId" 
+          v-if="visible && deviceId && !connectionClosed" 
           ref="streamRef"
           :device-id="deviceId" 
           :auto-connect="true"
           :server-url="serverUrl"
+          :skip-unmount-destroy="connectionClosed"
           @success="onStreamReady"
           @stream-error="onStreamError"
           @orientation-change="onOrientationChange"
         />
       </div>
-      <div class="resize-handle" @mousedown="startResize" />
     </div>
   </div>
 </template>
@@ -59,6 +59,8 @@ const streamReady = ref(false);
 const streamError = ref(false);
 // 是否横屏
 const isLandscape = ref(false);
+// 是否已关闭连接
+const connectionClosed = ref(false);
 const dialogRef = ref<HTMLElement | null>(null);
 const streamRef = ref(null);
 
@@ -77,20 +79,23 @@ const title = computed(() => {
 const isDragging = ref(false);
 const dragOffset = ref({ x: 0, y: 0 });
 
-// 缩放相关状态
-const isResizing = ref(false);
-const initialSize = ref({ width: 0, height: 0 });
-const initialPosition = ref({ x: 0, y: 0 });
-
 // 监听显示状态
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     visible.value = true;
     streamReady.value = false;
     streamError.value = false;
+    connectionClosed.value = false; // 重置关闭标志
   } else {
     visible.value = false;
     emit('closed');
+  }
+});
+
+// 监听连接关闭状态
+watch(() => connectionClosed.value, (newVal) => {
+  if (newVal) {
+    console.log('StreamDialog: 连接已标记为关闭状态');
   }
 });
 
@@ -157,9 +162,39 @@ const onStreamError = (errorData) => {
 };
 
 // 关闭窗口
-const closeDialog = () => {
-  // 更新父组件的v-model值
-  emit('update:modelValue', false);
+const closeDialog = async () => {
+  // 如果已经在关闭过程中，直接返回
+  if (connectionClosed.value) return;
+  
+  // 先标记已关闭状态，避免重复操作
+  connectionClosed.value = true;
+  
+  try {
+    // 1. 先设置跳过unmount销毁标志，这样组件切换时不会再次触发destroyConnection
+    // 此时不会立即销毁，因为我们只是设置了标志
+    visible.value = false; 
+    
+    // 2. 如果有流媒体连接，先等待其完全关闭
+    if (streamRef.value && typeof streamRef.value.destroyConnection === 'function') {
+      console.log('StreamDialog: 开始清理DeviceStream资源...');
+      
+      // 等待destroyConnection完成
+      // 传入true表示是用户主动关闭
+      await streamRef.value.destroyConnection(true);
+      
+      // 清空引用
+      streamRef.value = null;
+      console.log('StreamDialog: DeviceStream资源清理完成');
+    }
+    
+    // 3. 最后关闭对话框
+    console.log('StreamDialog: 关闭对话框');
+    emit('update:modelValue', false);
+  } catch (error) {
+    console.error('StreamDialog: 关闭过程中出错:', error);
+    // 出错时也要确保对话框关闭
+    emit('update:modelValue', false);
+  }
 };
 
 // 开始拖拽
@@ -213,64 +248,6 @@ const stopDrag = () => {
   document.removeEventListener('mouseup', stopDrag);
 };
 
-// 开始缩放
-const startResize = (e: MouseEvent) => {
-  if (!dialogRef.value) return;
-  
-  e.preventDefault();
-  isResizing.value = true;
-  
-  // 保存初始尺寸
-  initialSize.value = {
-    width: dialogRef.value.offsetWidth,
-    height: dialogRef.value.offsetHeight
-  };
-  
-  // 保存初始鼠标位置
-  initialPosition.value = {
-    x: e.clientX,
-    y: e.clientY
-  };
-  
-  document.addEventListener('mousemove', handleResize);
-  document.addEventListener('mouseup', stopResize);
-};
-
-// 处理缩放
-const handleResize = (e: MouseEvent) => {
-  if (!isResizing.value || !dialogRef.value) return;
-  
-  const deltaX = e.clientX - initialPosition.value.x;
-  const deltaY = e.clientY - initialPosition.value.y;
-  
-  // 计算新尺寸，保持宽高比
-  const aspectRatio = isLandscape.value ? 
-    STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT / STREAM_WINDOW_CONFIG.DEFAULT_WIDTH :
-    STREAM_WINDOW_CONFIG.DEFAULT_WIDTH / STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT;
-  
-  // 判断是主要按宽度还是高度调整
-  if (Math.abs(deltaX) > Math.abs(deltaY)) {
-    // 主要按宽度调整
-    const newWidth = Math.max(300, initialSize.value.width + deltaX);
-    const newHeight = newWidth / aspectRatio;
-    dialogRef.value.style.width = `${newWidth}px`;
-    dialogRef.value.style.height = `${newHeight}px`;
-  } else {
-    // 主要按高度调整
-    const newHeight = Math.max(300, initialSize.value.height + deltaY);
-    const newWidth = newHeight * aspectRatio;
-    dialogRef.value.style.width = `${newWidth}px`;
-    dialogRef.value.style.height = `${newHeight}px`;
-  }
-};
-
-// 停止缩放
-const stopResize = () => {
-  isResizing.value = false;
-  document.removeEventListener('mousemove', handleResize);
-  document.removeEventListener('mouseup', stopResize);
-};
-
 // 组件挂载时
 onMounted(() => {
   // 初始化对话框位置和尺寸
@@ -283,14 +260,15 @@ onMounted(() => {
     dialogRef.value.style.top = '50%';
     dialogRef.value.style.transform = 'translate(-50%, -50%)';
   }
+  
+  // 重置连接关闭状态
+  connectionClosed.value = false;
 });
 
 // 组件卸载前清理事件监听器
 onBeforeUnmount(() => {
   document.removeEventListener('mousemove', handleDrag);
   document.removeEventListener('mouseup', stopDrag);
-  document.removeEventListener('mousemove', handleResize);
-  document.removeEventListener('mouseup', stopResize);
 });
 </script>
 
@@ -430,25 +408,5 @@ onBeforeUnmount(() => {
   border-bottom-left-radius: 0;
   border-top-right-radius: 10px;
   border-bottom-right-radius: 10px;
-}
-
-.resize-handle {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 20px;
-  height: 20px;
-  cursor: nwse-resize;
-  z-index: 11;
-}
-
-.resize-handle::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 12px;
-  height: 12px;
-  background: linear-gradient(135deg, transparent 50%, #6495ED 50%, #6495ED 75%, transparent 75%);
 }
 </style> 
