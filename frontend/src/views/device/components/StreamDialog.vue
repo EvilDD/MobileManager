@@ -9,37 +9,16 @@
         </button>
       </div>
       
-      <!-- 加载中状态 -->
-      <div v-if="isLoading && !streamError" class="stream-loading">
-        <el-icon class="loading-icon"><Loading /></el-icon>
-        <span>正在连接中，请稍候...</span>
-      </div>
-      
-      <!-- 错误状态界面 -->
-      <div v-if="streamError" class="stream-error">
-        <el-icon class="error-icon"><CircleClose /></el-icon>
-        <span>{{ errorMessage }}</span>
-        <div class="error-buttons">
-          <el-button type="primary" size="small" @click="retryConnection" class="retry-button">
-            重试连接
-          </el-button>
-          <el-button type="danger" size="small" @click="closeDialog" class="close-error-button">
-            关闭窗口
-          </el-button>
-        </div>
-      </div>
-      
       <div class="phone-frame" :class="{ 'landscape': isLandscape }">
         <div class="phone-notch" />
         <device-stream 
-          v-if="visible && deviceId && isReady" 
+          v-if="visible && deviceId" 
           ref="streamRef"
           :device-id="deviceId" 
           :auto-connect="true"
           :server-url="serverUrl"
           @success="onStreamReady"
           @stream-error="onStreamError"
-          @loading-start="onLoadingStart"
           @orientation-change="onOrientationChange"
         />
       </div>
@@ -51,9 +30,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import DeviceStream from './DeviceStream.vue';
-import { Close, Loading, CircleClose } from '@element-plus/icons-vue';
-import { STREAM_WINDOW_CONFIG } from './config';
+import { Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { STREAM_WINDOW_CONFIG } from './config';
 
 const props = defineProps({
   modelValue: {
@@ -74,14 +53,10 @@ const emit = defineEmits(['update:modelValue', 'closed']);
 
 // 组件内部是否可见（用于延迟销毁iframe）
 const visible = ref(false);
-// 对话框是否准备好（用于延迟加载iframe）
-const isReady = ref(false);
 // 流是否准备好
 const streamReady = ref(false);
 // 流连接错误
 const streamError = ref(false);
-// 错误信息
-const errorMessage = ref('');
 // 是否横屏
 const isLandscape = ref(false);
 const dialogRef = ref<HTMLElement | null>(null);
@@ -90,12 +65,12 @@ const streamRef = ref(null);
 // 计算属性: 标题
 const title = computed(() => {
   if (streamError.value) {
-    return `连接设备 ${props.deviceId || ''} 失败`;
+    return `设备 ${props.deviceId || ''} - 连接失败`;
   }
   if (!streamReady.value) {
-    return `正在连接设备 ${props.deviceId || ''}...`;
+    return `设备 ${props.deviceId || ''} - 连接中`;
   }
-  return `${isLandscape.value ? '横屏' : '竖屏'} - 设备 ${props.deviceId || ''}`;
+  return `设备 ${props.deviceId || ''} - ${isLandscape.value ? '横屏' : '竖屏'}`;
 });
 
 // 拖拽相关状态
@@ -107,31 +82,15 @@ const isResizing = ref(false);
 const initialSize = ref({ width: 0, height: 0 });
 const initialPosition = ref({ x: 0, y: 0 });
 
-// 加载中状态
-const isLoading = ref(false);
-
 // 监听显示状态
 watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     visible.value = true;
     streamReady.value = false;
     streamError.value = false;
-    errorMessage.value = '';
-    isLoading.value = true; // 显示加载状态
-    
-    // 添加一个小延迟，确保对话框完全打开后再加载iframe
-    setTimeout(() => {
-      isReady.value = true;
-    }, 100);
   } else {
-    isReady.value = false;
-    streamReady.value = false;
-    streamError.value = false;
-    isLoading.value = false;
-    setTimeout(() => {
-      visible.value = false;
-      emit('closed');
-    }, 200);
+    visible.value = false;
+    emit('closed');
   }
 });
 
@@ -150,49 +109,38 @@ const onOrientationChange = (data) => {
     ElMessage.info(`设备 ${props.deviceId} 切换到${isLandscape.value ? '横屏' : '竖屏'}模式`);
   }
   
-  // 调整对话框大小以适应新的屏幕方向
-  adjustWindowForOrientation(data);
+  // 根据方向更新窗口尺寸
+  adjustDialogSizeForOrientation();
 };
 
-// 根据屏幕方向调整窗口大小
-const adjustWindowForOrientation = (data) => {
+// 根据屏幕方向调整对话框尺寸
+const adjustDialogSizeForOrientation = () => {
   if (!dialogRef.value) return;
   
-  // 获取当前窗口尺寸
-  const currentWidth = dialogRef.value.clientWidth;
-  const currentHeight = dialogRef.value.clientHeight;
+  // 获取phone-frame元素
+  const phoneFrame = dialogRef.value.querySelector('.phone-frame') as HTMLElement;
+  if (!phoneFrame) return;
   
-  if (data.orientation === 'landscape') {
-    // 横屏：确保宽度大于高度
-    if (currentWidth < currentHeight) {
-      // 交换宽高
-      dialogRef.value.style.width = `${currentHeight}px`;
-      dialogRef.value.style.height = `${currentWidth}px`;
-    }
+  // 设置phone-frame尺寸 - 确保完全匹配DEFAULT_WIDTH/HEIGHT
+  const HEADER_HEIGHT = 36; // 标题栏高度
+  
+  // 重要：phone-frame必须完全匹配container尺寸，不添加任何边距
+  if (isLandscape.value) {
+    // 横屏模式 - 交换宽高
+    phoneFrame.style.width = `${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px`;
+    phoneFrame.style.height = `${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px`;
+    
+    // 调整对话框尺寸，只考虑标题栏高度
+    dialogRef.value.style.width = `${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px`;
+    dialogRef.value.style.height = `${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + HEADER_HEIGHT}px`;
   } else {
-    // 竖屏：确保高度大于宽度
-    if (currentWidth > currentHeight) {
-      // 交换宽高
-      dialogRef.value.style.width = `${currentHeight}px`;
-      dialogRef.value.style.height = `${currentWidth}px`;
-    }
-  }
-};
-
-// 重试连接
-const retryConnection = () => {
-  if (streamRef.value && streamRef.value.retryConnect) {
-    // 显示加载状态
-    isLoading.value = true;
+    // 竖屏模式 - 使用默认宽高
+    phoneFrame.style.width = `${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px`;
+    phoneFrame.style.height = `${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT}px`;
     
-    // 短暂延迟后再清除错误状态，避免UI闪烁
-    setTimeout(() => {
-      streamError.value = false;
-      errorMessage.value = '';
-    }, 100);
-    
-    // 直接调用流组件的重试方法
-    streamRef.value.retryConnect();
+    // 调整对话框尺寸，只考虑标题栏高度
+    dialogRef.value.style.width = `${STREAM_WINDOW_CONFIG.DEFAULT_WIDTH}px`;
+    dialogRef.value.style.height = `${STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + HEADER_HEIGHT}px`;
   }
 };
 
@@ -201,30 +149,17 @@ const onStreamReady = (deviceId, data) => {
   console.log('收到流加载完成事件:', deviceId, data);
   streamReady.value = true;
   streamError.value = false;
-  isLoading.value = false;
 };
 
 // 流加载错误回调
 const onStreamError = (errorData) => {
   streamError.value = true;
-  isLoading.value = false;
-  errorMessage.value = errorData.error || '连接失败';
 };
 
 // 关闭窗口
 const closeDialog = () => {
-  // 立即清除错误状态以便正确关闭
-  streamError.value = false;
-  errorMessage.value = '';
-  
   // 更新父组件的v-model值
   emit('update:modelValue', false);
-  
-  // 短暂延迟后处理完全关闭
-  setTimeout(() => {
-    visible.value = false;
-    emit('closed');
-  }, 200);
 };
 
 // 开始拖拽
@@ -248,15 +183,27 @@ const startDrag = (e: MouseEvent) => {
   document.addEventListener('mouseup', stopDrag);
 };
 
-// 处理拖拽
+// 拖拽中
 const handleDrag = (e: MouseEvent) => {
   if (!isDragging.value || !dialogRef.value) return;
   
-  const newX = e.clientX - dragOffset.value.x;
-  const newY = e.clientY - dragOffset.value.y;
+  // 计算新位置
+  let left = e.clientX - dragOffset.value.x;
+  let top = e.clientY - dragOffset.value.y;
   
-  dialogRef.value.style.left = `${newX}px`;
-  dialogRef.value.style.top = `${newY}px`;
+  // 限制不超出屏幕边界
+  const windowWidth = window.innerWidth;
+  const windowHeight = window.innerHeight;
+  const dialogWidth = dialogRef.value.offsetWidth;
+  const dialogHeight = dialogRef.value.offsetHeight;
+  
+  // 至少20px在视口内
+  left = Math.min(Math.max(left, -dialogWidth + 20), windowWidth - 20);
+  top = Math.min(Math.max(top, 0), windowHeight - 20);
+  
+  // 应用新位置
+  dialogRef.value.style.left = `${left}px`;
+  dialogRef.value.style.top = `${top}px`;
 };
 
 // 停止拖拽
@@ -270,14 +217,16 @@ const stopDrag = () => {
 const startResize = (e: MouseEvent) => {
   if (!dialogRef.value) return;
   
+  e.preventDefault();
   isResizing.value = true;
-  const rect = dialogRef.value.getBoundingClientRect();
   
+  // 保存初始尺寸
   initialSize.value = {
-    width: rect.width,
-    height: rect.height
+    width: dialogRef.value.offsetWidth,
+    height: dialogRef.value.offsetHeight
   };
   
+  // 保存初始鼠标位置
   initialPosition.value = {
     x: e.clientX,
     y: e.clientY
@@ -294,23 +243,25 @@ const handleResize = (e: MouseEvent) => {
   const deltaX = e.clientX - initialPosition.value.x;
   const deltaY = e.clientY - initialPosition.value.y;
   
-  const newWidth = Math.max(
-    STREAM_WINDOW_CONFIG.MIN_WIDTH,
-    Math.min(
-      STREAM_WINDOW_CONFIG.MAX_WIDTH,
-      initialSize.value.width + deltaX
-    )
-  );
-  const newHeight = Math.max(
-    STREAM_WINDOW_CONFIG.MIN_HEIGHT,
-    Math.min(
-      STREAM_WINDOW_CONFIG.MAX_HEIGHT,
-      initialSize.value.height + deltaY
-    )
-  );
+  // 计算新尺寸，保持宽高比
+  const aspectRatio = isLandscape.value ? 
+    STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT / STREAM_WINDOW_CONFIG.DEFAULT_WIDTH :
+    STREAM_WINDOW_CONFIG.DEFAULT_WIDTH / STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT;
   
-  dialogRef.value.style.width = `${newWidth}px`;
-  dialogRef.value.style.height = `${newHeight}px`;
+  // 判断是主要按宽度还是高度调整
+  if (Math.abs(deltaX) > Math.abs(deltaY)) {
+    // 主要按宽度调整
+    const newWidth = Math.max(300, initialSize.value.width + deltaX);
+    const newHeight = newWidth / aspectRatio;
+    dialogRef.value.style.width = `${newWidth}px`;
+    dialogRef.value.style.height = `${newHeight}px`;
+  } else {
+    // 主要按高度调整
+    const newHeight = Math.max(300, initialSize.value.height + deltaY);
+    const newWidth = newHeight * aspectRatio;
+    dialogRef.value.style.width = `${newWidth}px`;
+    dialogRef.value.style.height = `${newHeight}px`;
+  }
 };
 
 // 停止缩放
@@ -320,26 +271,27 @@ const stopResize = () => {
   document.removeEventListener('mouseup', stopResize);
 };
 
-// 组件卸载前清理事件监听
+// 组件挂载时
+onMounted(() => {
+  // 初始化对话框位置和尺寸
+  if (dialogRef.value) {
+    // 调整初始尺寸
+    adjustDialogSizeForOrientation();
+    
+    // 窗口居中
+    dialogRef.value.style.left = '50%';
+    dialogRef.value.style.top = '50%';
+    dialogRef.value.style.transform = 'translate(-50%, -50%)';
+  }
+});
+
+// 组件卸载前清理事件监听器
 onBeforeUnmount(() => {
   document.removeEventListener('mousemove', handleDrag);
   document.removeEventListener('mouseup', stopDrag);
   document.removeEventListener('mousemove', handleResize);
   document.removeEventListener('mouseup', stopResize);
 });
-
-// 暴露方法给父组件
-defineExpose({
-  retryConnection
-});
-
-// 加载开始回调
-const onLoadingStart = (deviceId) => {
-  console.log('设备开始加载:', deviceId);
-  isLoading.value = true;
-  streamReady.value = false;
-  streamError.value = false;
-};
 </script>
 
 <style scoped>
@@ -347,108 +299,113 @@ const onLoadingStart = (deviceId) => {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1999;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
 }
 
 .stream-backdrop {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
 }
 
 .stream-window {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
-  height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
-  background-color: #000;
-  border-radius: 20px;
+  position: absolute;
+  background-color: #202020;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   overflow: hidden;
-  box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
-  z-index: 2000;
-  user-select: none;
+  border: 1px solid #404040;
 }
 
 .stream-header {
+  background-color: #303030;
+  height: 36px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  background-color: #1a1a1a;
+  justify-content: space-between;
+  padding: 0 12px;
   cursor: move;
-  position: relative;
-  z-index: 20;
+  user-select: none;
+  border-bottom: 1px solid #404040;
+  flex-shrink: 0;
 }
 
 .stream-title {
-  color: #fff;
-  font-size: 16px;
+  color: #f0f0f0;
+  font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .close-button {
   width: 24px;
   height: 24px;
-  border: none;
+  border-radius: 4px;
   background: transparent;
-  color: #fff;
-  cursor: pointer;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-  padding: 0;
-  position: relative;
-  z-index: 25;
+  color: #f0f0f0;
+  cursor: pointer;
+  outline: none;
 }
 
 .close-button:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  transform: rotate(90deg);
+}
+
+.close-button:active {
+  background-color: rgba(255, 255, 255, 0.15);
 }
 
 .phone-frame {
-  position: relative;
   flex: 1;
+  position: relative;
+  margin: 0; /* 移除所有边距 */
+  padding: 0; /* 确保没有内边距 */
   background-color: #000;
-  border-radius: 36px;
-  border: 6px solid #1a1a1a;
-  margin: 0;
-  box-shadow: inset 0 0 10px rgba(0,0,0,0.6);
   overflow: hidden;
   display: flex;
-  flex-direction: column;
-  transition: all 0.3s ease;
-  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box; /* 确保尺寸包含边框 */
+  border: none; /* 移除边框 */
 }
 
-/* 横屏样式 */
-.phone-frame.landscape {
-  border-radius: 20px;
-}
-
-.phone-frame.landscape .phone-notch {
-  left: auto;
-  top: 50%;
+/* 使用伪元素添加视觉边框，不影响尺寸 */
+.phone-frame::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
   right: 0;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 120px;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 0;
-  border-top-left-radius: 10px;
+  bottom: 0;
+  border-radius: 20px;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5) inset;
+  border: 1px solid #505050;
+  z-index: 5;
+}
+
+.phone-frame.landscape {
+  transform: none;
 }
 
 .phone-notch {
@@ -457,148 +414,41 @@ const onLoadingStart = (deviceId) => {
   left: 50%;
   transform: translateX(-50%);
   width: 120px;
-  height: 20px;
-  background-color: #1a1a1a;
+  height: 12px;
+  background-color: #000;
   border-bottom-left-radius: 10px;
   border-bottom-right-radius: 10px;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  transition: all 0.3s ease;
 }
 
-:deep(.device-stream-container) {
-  flex: 1;
-  border-radius: 30px;
-  overflow: hidden;
-  background-color: #000;
-  width: 100% !important;
-  height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+.landscape .phone-notch {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 120px;
+  border-bottom-left-radius: 0;
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
 }
 
-:deep(.device-stream-frame) {
-  border-radius: 30px;
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-}
-
-/* 添加缩放手柄样式 */
 .resize-handle {
   position: absolute;
-  right: 0;
   bottom: 0;
+  right: 0;
   width: 20px;
   height: 20px;
   cursor: nwse-resize;
-  z-index: 10;
+  z-index: 11;
 }
 
 .resize-handle::after {
   content: '';
   position: absolute;
-  right: 4px;
   bottom: 4px;
+  right: 4px;
   width: 12px;
   height: 12px;
-  border-right: 2px solid rgba(255, 255, 255, 0.5);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.5);
-}
-
-.retry-button {
-  margin: 0;
-}
-
-.error-buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.stream-error {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.8);
-  color: #f56c6c;
-  z-index: 15; /* 确保在header下面，不遮挡关闭按钮 */
-  text-align: center;
-  padding: 20px;
-}
-
-.error-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: #f56c6c;
-}
-
-.close-error-button {
-  background-color: #f56c6c;
-  color: #fff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.close-error-button:hover {
-  background-color: #e65c5c;
-}
-
-.stream-loading {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  z-index: 15;
-  text-align: center;
-  padding: 20px;
-}
-
-.loading-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: #fff;
-  animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@media (max-width: 768px) {
-  .stream-window {
-    width: 95vw;
-    height: 95vh;
-  }
-  
-  .phone-frame {
-    border-radius: 20px;
-    border-width: 4px;
-  }
-  
-  .phone-notch {
-    width: 100px;
-    height: 16px;
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-  }
+  background: linear-gradient(135deg, transparent 50%, #6495ED 50%, #6495ED 75%, transparent 75%);
 }
 </style> 

@@ -85,7 +85,7 @@ type VideoSettings struct {
 
 // 视频流初始参数
 const (
-	BITRATE          = 50000
+	BITRATE          = 5000000
 	MAX_FPS          = 24
 	I_FRAME_INTERVAL = 5
 	WIDTH            = 540

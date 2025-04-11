@@ -44,6 +44,9 @@ importers:
       element-plus:
         specifier: ^2.9.0
         version: 2.9.0(vue@3.5.13(typescript@5.6.3))
+      h264-converter:
+        specifier: ^0.1.4
+        version: 0.1.4
       js-cookie:
         specifier: ^3.0.5
         version: 3.0.5
@@ -2002,6 +2005,9 @@ packages:
   graphemer@1.4.0:
     resolution: {integrity: sha512-EtKwoO6kxCL9WO5xipiHTZlSzBm7WLT627TqC/uVRd0HKmq8NXyebnNYxDoBi7wt8eTWrUrKXCOVaFq9x1kgag==}
 
+  h264-converter@0.1.4:
+    resolution: {integrity: sha512-+rBCqYTyRuJYBjpbN/T9tShvhMsITrYeEKnLrhFmGaqCEjsMT/xT9y2nUsLYfq0X4thuP+2vkCJAQZZIqRYMnQ==}
+
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
@@ -3271,6 +3277,9 @@ packages:
 
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
+
+  tslib@1.14.1:
+    resolution: {integrity: sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==}
 
   tslib@2.3.0:
     resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
@@ -5504,6 +5513,10 @@ snapshots:
 
   graphemer@1.4.0: {}
 
+  h264-converter@0.1.4:
+    dependencies:
+      tslib: 1.14.1
+
   has-flag@4.0.0: {}
 
   has-property-descriptors@1.0.2:
@@ -6757,6 +6770,8 @@ snapshots:
       typescript: 5.6.3
 
   ts-interface-checker@0.1.13: {}
+
+  tslib@1.14.1: {}
 
   tslib@2.3.0: {}
 
