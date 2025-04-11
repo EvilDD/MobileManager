@@ -383,17 +383,13 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 	// 检查是否是初始化消息
 	if len(data) > len(model.MAGIC_BYTES_INITIAL) && strings.HasPrefix(string(data), model.MAGIC_BYTES_INITIAL) {
 		s.handleInitialInfo(ctx, wsConn, deviceConn, data)
-		isSpecialMessage = true
-		// 注意：handleInitialInfo已经负责转发消息，不需要在这里再转发
-		return isSpecialMessage
+		isSpecialMessage = false
 	}
 
 	// 检查是否是设备消息
 	if len(data) > len(model.MAGIC_BYTES_MESSAGE) && strings.HasPrefix(string(data), model.MAGIC_BYTES_MESSAGE) {
 		s.handleDeviceMessage(ctx, wsConn, deviceConn, data)
-		isSpecialMessage = true
-		// 注意：handleDeviceMessage已经负责转发消息，不需要在这里再转发
-		return isSpecialMessage
+		isSpecialMessage = false
 	}
 
 	// 检查是否是 SPS 数据
@@ -481,12 +477,12 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 func (s *ScrcpyService) handleInitialInfo(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) {
 	glog.Info(ctx, "处理初始化信息...")
 
-	// 直接转发初始化信息到客户端
-	err := wsConn.WriteMessage(websocket.BinaryMessage, data)
-	if err != nil {
-		glog.Error(ctx, "转发初始化信息失败:", err)
-		return
-	}
+	// // 直接转发初始化信息到客户端
+	// err := wsConn.WriteMessage(websocket.BinaryMessage, data)
+	// if err != nil {
+	// 	glog.Error(ctx, "转发初始化信息失败:", err)
+	// 	return
+	// }
 
 	// 尝试解析屏幕尺寸和客户端ID，实际应用中可能需要更复杂的解析逻辑
 	offset := len(model.MAGIC_BYTES_INITIAL)
