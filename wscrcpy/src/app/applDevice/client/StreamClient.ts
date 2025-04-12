@@ -87,9 +87,15 @@ export abstract class StreamClient<T extends ParamsStream> extends BaseClient<T,
             return;
         }
         const body = document.body;
-        const width = (body.clientWidth - controlButtons.clientWidth) & ~15;
-        const height = body.clientHeight & ~15;
+        const width = body.clientWidth & ~15;
+        const controlButtonsHeight = 52;
+        const height = (body.clientHeight - controlButtonsHeight) & ~15;
         return new Size(width, height);
+    }
+
+    protected adjustVideoElementStyle(): void {
+        // 已在CSS中设置好固定高度，此方法保留但简化
+        console.log(TAG, '通过CSS设置了固定样式，max-height: calc(100% - 52px)');
     }
 
     private waitForWda?: Promise<void>;
@@ -170,11 +176,16 @@ export abstract class StreamClient<T extends ParamsStream> extends BaseClient<T,
 
     protected onInputVideoResize = (screenInfo: ScreenInfo): void => {
         this.wdaProxy.setScreenInfo(screenInfo);
+        this.adjustVideoElementStyle();
     };
 
     public onStop(ev?: string | Event): void {
         if (ev && ev instanceof Event && ev.type === 'error') {
             console.error(TAG, ev);
+        }
+        const controlButtons = document.querySelector('.control-buttons-list');
+        if (controlButtons && controlButtons.parentElement) {
+            controlButtons.parentElement.removeChild(controlButtons);
         }
         if (this.deviceView) {
             const parent = this.deviceView.parentElement;
@@ -188,6 +199,7 @@ export abstract class StreamClient<T extends ParamsStream> extends BaseClient<T,
                 parent.removeChild(this.moreBox);
             }
         }
+        window.removeEventListener('resize', this.handleWindowResize);
         this.wdaProxy.stop();
         this.player?.stop();
     }
@@ -227,19 +239,39 @@ export abstract class StreamClient<T extends ParamsStream> extends BaseClient<T,
         const moreBox: HTMLElement = applMoreBox.getHolderElement();
         const applToolBox = ApplToolBox.createToolBox(udid, player, this, this.wdaProxy, moreBox);
         const controlButtons = applToolBox.getHolderElement();
-        deviceView.appendChild(controlButtons);
+        document.body.appendChild(controlButtons);
         deviceView.appendChild(this.videoWrapper);
         deviceView.appendChild(moreBox);
         player.setParent(this.videoWrapper);
         player.on('input-video-resize', this.onInputVideoResize);
 
         document.body.appendChild(deviceView);
+        
         const bounds = this.getMaxSize(controlButtons);
         if (bounds) {
             player.setBounds(bounds);
         }
         this.player = player;
+        
+        // 确保在DOM完全加载后再次调整
+        setTimeout(() => {
+            console.log(TAG, '延迟执行样式调整');
+            this.adjustVideoElementStyle();
+        }, 1000);
+        
+        window.addEventListener('resize', this.handleWindowResize);
     }
+
+    protected handleWindowResize = (): void => {
+        this.adjustVideoElementStyle();
+        
+        if (this.player) {
+            const bounds = this.getMaxSize(document.querySelector('.control-buttons-list') as HTMLElement);
+            if (bounds) {
+                this.player.setBounds(bounds);
+            }
+        }
+    };
 
     public getDeviceName(): string {
         return this.deviceName;

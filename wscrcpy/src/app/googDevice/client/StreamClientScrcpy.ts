@@ -176,6 +176,8 @@ export class StreamClientScrcpy
         const STATE = BasePlayer.STATE;
         if (this.player.getState() === STATE.PAUSED) {
             this.player.play();
+            // 播放时调整视频元素样式
+            this.adjustVideoElementStyle();
         }
         if (this.player.getState() === STATE.PLAYING) {
             this.player.pushFrame(new Uint8Array(data));
@@ -205,6 +207,9 @@ export class StreamClientScrcpy
         }
         const { videoSettings, screenInfo } = info;
         this.player.setDisplayInfo(info.displayInfo);
+        
+        // 屏幕信息更新时调整视频样式
+        this.adjustVideoElementStyle();
 
         // 发送屏幕方向状态通知到父窗口
         if (screenInfo) {
@@ -307,6 +312,9 @@ export class StreamClientScrcpy
         if (this.controlButtons && this.controlButtons.parentElement) {
             this.controlButtons.parentElement.removeChild(this.controlButtons);
         }
+        
+        // 移除窗口大小变化监听
+        window.removeEventListener('resize', this.handleWindowResize);
     };
 
     public startStream({ udid, player, playerName, videoSettings, fitToScreen }: StartParams): void {
@@ -362,6 +370,8 @@ export class StreamClientScrcpy
             if (this.player) {
                 this.player.stop();
             }
+            // 移除窗口大小变化监听
+            window.removeEventListener('resize', this.handleWindowResize);
         };
 
         const googMoreBox = (this.moreBox = new GoogMoreBox(udid, player, this));
@@ -383,6 +393,12 @@ export class StreamClientScrcpy
 
         document.body.appendChild(deviceView);
 
+        // 调整视频元素样式
+        this.adjustVideoElementStyle();
+        
+        // 添加窗口大小变化监听
+        window.addEventListener('resize', this.handleWindowResize);
+
         // 总是使用fitToScreen
         const newBounds = this.getMaxSize();
         if (newBounds) {
@@ -402,6 +418,12 @@ export class StreamClientScrcpy
         streamReceiver.on('displayInfo', this.onDisplayInfo);
         streamReceiver.on('disconnected', this.onDisconnected);
         console.log(TAG, player.getName(), udid);
+        
+        // 确保在DOM完全加载后再次调整
+        setTimeout(() => {
+            console.log(TAG, '延迟执行样式调整');
+            this.adjustVideoElementStyle();
+        }, 1000);
     }
 
     public sendMessage(message: ControlMessage): void {
@@ -439,10 +461,10 @@ export class StreamClientScrcpy
 
     public getMaxSize(): Size | undefined {
         const body = document.body;
-        // 控制面板现在总是在底部，需要减去控制面板高度
-        const buttonHeight = 3.715 * parseFloat(getComputedStyle(document.documentElement).fontSize);
         const width = body.clientWidth & ~15;
-        const height = (body.clientHeight - buttonHeight) & ~15;
+        // 使用固定52px高度，与CSS中的控制按钮高度一致
+        const controlButtonsHeight = 52;
+        const height = (body.clientHeight - controlButtonsHeight) & ~15;
         return new Size(width, height);
     }
 
@@ -453,6 +475,12 @@ export class StreamClientScrcpy
         this.touchHandler = new FeaturedInteractionHandler(player, this);
     }
 
+    // 简化方法，不再需要复杂的逻辑
+    private adjustVideoElementStyle(): void {
+        // 已在CSS中设置好固定高度，此方法保留但简化
+        console.log(TAG, '通过CSS设置了固定样式，max-height: calc(100% - 52px)');
+    }
+
     private applyNewVideoSettings(videoSettings: VideoSettings, saveToStorage: boolean): void {
         let fitToScreen = false;
 
@@ -461,6 +489,8 @@ export class StreamClientScrcpy
         }
         if (this.player) {
             this.player.setVideoSettings(videoSettings, fitToScreen, saveToStorage);
+            // 调整视频样式以防止与控制按钮重叠
+            this.adjustVideoElementStyle();
         }
     }
 
@@ -554,6 +584,21 @@ export class StreamClientScrcpy
         event.dialog.off('closed', StreamClientScrcpy.onConfigureDialogClosed);
         if (event.result) {
             HostTracker.getInstance().destroy();
+        }
+    };
+
+    // 添加窗口大小变化的处理方法
+    private handleWindowResize = (): void => {
+        this.adjustVideoElementStyle();
+        
+        // 如果启用了fitToScreen，还需要重新调整视频设置
+        if (this.fitToScreen && this.player) {
+            const currentSettings = this.player.getVideoSettings();
+            const newBounds = this.getMaxSize();
+            if (newBounds) {
+                const newSettings = StreamClientScrcpy.createVideoSettingsWithBounds(currentSettings, newBounds);
+                this.player.setVideoSettings(newSettings, true, false);
+            }
         }
     };
 }
