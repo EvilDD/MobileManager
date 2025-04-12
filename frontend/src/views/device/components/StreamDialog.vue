@@ -411,9 +411,9 @@ const onLoadingStart = (deviceId) => {
 }
 
 :deep(.device-stream-container.landscape) {
-  /* 确保横屏模式下样式正确应用 */
-  width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"') !important;
-  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
+  /* 确保横屏模式下样式正确应用，使用实际canvas尺寸 */
+  width: v-bind('canvasWidth + "px"') !important;
+  height: v-bind('(canvasHeight + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
 }
 
 :deep(.device-stream-frame) {

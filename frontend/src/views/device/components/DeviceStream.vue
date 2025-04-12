@@ -58,6 +58,10 @@
   const CONNECTION_STABILITY_PERIOD = 1000; // 连接成功后的稳定期(毫秒)
   let isStabilizing = false; // 是否处于连接稳定期
   
+  // 添加设备实际尺寸变量
+  const deviceWidth = ref(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH);
+  const deviceHeight = ref(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT);
+  
   // 构建完整的串流URL
   const streamUrl = computed(() => {
     if (!props.deviceId) return 'about:blank';
@@ -138,11 +142,25 @@
     
     if (!parentRect) return;
     
-    // 不再区分横竖屏，始终使用固定尺寸
-    const width = Math.min(STREAM_WINDOW_CONFIG.CANVAS.WIDTH, parentRect.width);
-    const height = Math.min(STREAM_WINDOW_CONFIG.CANVAS.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentRect.height);
+    // 根据横竖屏状态使用不同的尺寸计算
+    let width, height;
     
-    console.log(`调整设备视图尺寸: ${width}x${height}, 固定尺寸模式`);
+    if (landscape) {
+      // 横屏模式 - 使用设备实际尺寸
+      width = Math.min(deviceWidth.value, parentRect.width);
+      height = Math.min(deviceHeight.value + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentRect.height);
+      console.log(`横屏模式 - 设置尺寸为 ${width}x${height} (设备实际尺寸+按钮高度)`);
+    } else {
+      // 竖屏模式 - 使用固定尺寸
+      width = Math.min(STREAM_WINDOW_CONFIG.CANVAS.WIDTH, parentRect.width);
+      height = Math.min(STREAM_WINDOW_CONFIG.CANVAS.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentRect.height);
+      console.log(`竖屏模式 - 设置尺寸为 ${width}x${height} (固定尺寸模式)`);
+    }
+    
+    // 直接设置容器样式
+    container.style.width = `${width}px`;
+    container.style.height = `${height}px`;
+    console.log(`直接设置容器样式: width=${width}px, height=${height}px`);
     
     // 设置iframe尺寸，确保完全匹配容器尺寸
     streamFrame.value.style.cssText = `
@@ -318,15 +336,22 @@
             lastOrientationData.orientation = data.status;
             lastOrientationData.timestamp = now;
             
+            // 更新设备实际尺寸
+            if (data.width && data.height) {
+              deviceWidth.value = data.width;
+              deviceHeight.value = data.height;
+              console.log(`更新设备实际尺寸: ${deviceWidth.value}x${deviceHeight.value}`);
+            }
+            
             // 更新横屏状态
             const newLandscapeState = data.status === 'landscape';
-            if (isLandscape.value !== newLandscapeState) {
-              isLandscape.value = newLandscapeState;
-              
-              // 在下一帧更新容器尺寸
-              nextTick(() => {
-                updateContainerSize(isLandscape.value);
-              });
+            const orientationChanged = isLandscape.value !== newLandscapeState;
+            isLandscape.value = newLandscapeState;
+            
+            // 应用样式并强制重绘
+            if (streamFrame.value && streamFrame.value.parentElement) {
+              // 更新容器尺寸
+              updateContainerSize(isLandscape.value);
             }
             
             // 向父组件发送屏幕方向变化事件
@@ -335,7 +360,10 @@
               orientation: data.status,
               rotation: data.rotation,
               width: data.width,
-              height: data.height
+              height: data.height,
+              actualWidth: deviceWidth.value,  // 传递设备实际宽度
+              actualHeight: deviceHeight.value, // 传递设备实际高度
+              fullHeight: deviceHeight.value + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT // 真实高度加按钮高度
             });
           }
         }
