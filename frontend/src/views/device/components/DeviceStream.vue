@@ -138,21 +138,11 @@
     
     if (!parentRect) return;
     
-    let width, height;
-    const parentWidth = parentRect.width;
-    const parentHeight = parentRect.height;
+    // 不再区分横竖屏，始终使用固定尺寸
+    const width = Math.min(STREAM_WINDOW_CONFIG.CANVAS.WIDTH, parentRect.width);
+    const height = Math.min(STREAM_WINDOW_CONFIG.CANVAS.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentRect.height);
     
-    if (landscape) {
-      // 横屏模式
-      width = Math.min(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH, parentWidth);
-      height = Math.min(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentHeight);
-    } else {
-      // 竖屏模式
-      width = Math.min(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH, parentWidth);
-      height = Math.min(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentHeight);
-    }
-    
-    console.log(`调整设备视图尺寸: ${width}x${height}, 横屏: ${landscape}`);
+    console.log(`调整设备视图尺寸: ${width}x${height}, 固定尺寸模式`);
     
     // 设置iframe尺寸，确保完全匹配容器尺寸
     streamFrame.value.style.cssText = `
@@ -390,8 +380,8 @@
   
   <style scoped>
   .device-stream-container {
-    width: v-bind('STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + "px"') !important;
-    height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
+    width: v-bind('STREAM_WINDOW_CONFIG.CANVAS.WIDTH + "px"') !important;
+    height: v-bind('(STREAM_WINDOW_CONFIG.CANVAS.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -457,17 +447,17 @@
     }
   }
   
-  /* 横屏样式 */
+  /* 横屏样式 - 保留类但不改变尺寸 */
   .device-stream-container.landscape {
-    width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"') !important;
-    height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
+    /* 不再改变宽高，使用与竖屏相同的尺寸 */
     transform: rotate(0deg); /* 确保容器本身不旋转 */
   }
   
   /* 横屏模式下的iframe */
   .landscape .device-stream-frame {
-    width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"');
-    height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"');
+    /* 同样使用相同的尺寸 */
+    width: 100% !important;
+    height: 100% !important;
   }
   
   /* 修改 wscrcpy 中的样式 */

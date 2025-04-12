@@ -12,6 +12,12 @@ export const STREAM_WINDOW_CONFIG = {
     HEIGHT: 540,  // 横屏高度等于竖屏宽度
   },
   
+  // device-stream-container 固定尺寸
+  CANVAS: {
+    WIDTH: 960,   // 固定宽度，不区分横竖屏
+    HEIGHT: 960,  // 固定高度，不区分横竖屏
+  },
+  
   // 控制按钮相关配置
   BUTTON: {
     HEIGHT: 52,   // 按钮高度
