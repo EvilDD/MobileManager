@@ -459,8 +459,8 @@
   
   /* 横屏样式 */
   .device-stream-container.landscape {
-    width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"');
-    height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"');
+    width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"') !important;
+    height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
     transform: rotate(0deg); /* 确保容器本身不旋转 */
   }
   

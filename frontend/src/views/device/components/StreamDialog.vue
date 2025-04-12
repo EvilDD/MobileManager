@@ -152,6 +152,15 @@ const onOrientationChange = (data) => {
   
   // 调整对话框大小以适应新的屏幕方向
   adjustWindowForOrientation(data);
+  
+  // 延迟检查尺寸
+  setTimeout(() => {
+    const container = document.querySelector('.device-stream-container');
+    if (container) {
+      const style = window.getComputedStyle(container);
+      console.log(`设备容器尺寸 - 宽: ${style.width}, 高: ${style.height}, 模式: ${isLandscape.value ? '横屏' : '竖屏'}`);
+    }
+  }, 500);
 };
 
 // 根据屏幕方向调整窗口大小
@@ -467,6 +476,13 @@ const onLoadingStart = (deviceId) => {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+  /* 注意：不设置宽高，让组件自己控制尺寸 */
+}
+
+:deep(.device-stream-container.landscape) {
+  /* 确保横屏模式下样式正确应用 */
+  width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"') !important;
+  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
 }
 
 :deep(.device-stream-frame) {
