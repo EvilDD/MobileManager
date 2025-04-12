@@ -85,6 +85,10 @@ const isLandscape = ref(false);
 const dialogRef = ref<HTMLElement | null>(null);
 const streamRef = ref(null);
 
+// 设备canvas实际尺寸（从设备获取）
+const canvasWidth = ref(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH); // 默认值
+const canvasHeight = ref(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT); // 默认值
+
 // 计算属性: 标题
 const title = computed(() => {
   if (streamError.value) {
@@ -137,6 +141,13 @@ const onOrientationChange = (data) => {
   
   // 更新屏幕方向状态
   isLandscape.value = data.orientation === 'landscape';
+  
+  // 更新canvas尺寸
+  if (data.width && data.height) {
+    canvasWidth.value = data.width;
+    canvasHeight.value = data.height;
+    console.log(`更新canvas尺寸: ${canvasWidth.value}x${canvasHeight.value}`);
+  }
   
   // 方向真正发生变化时才显示消息
   if (streamReady.value && previousOrientation !== data.orientation) {
@@ -308,9 +319,9 @@ const onLoadingStart = (deviceId) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  /* 基于phone-frame的尺寸计算，加上header高度和外边距 */
-  width: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + 12) + "px"'); /* 保持宽度不变 */
-  height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12 + 44) + "px"'); /* 精确计算：设备高度 + 按钮高度 + 边框(6px*2) + header */
+  /* 基于phone-frame计算 */
+  width: v-bind('(canvasWidth + 12) + "px"');
+  height: v-bind('(canvasHeight + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12 + 44) + "px"');
   background-color: #000;
   border-radius: 20px;
   overflow: hidden;
@@ -376,16 +387,17 @@ const onLoadingStart = (deviceId) => {
   flex-direction: column;
   transition: all 0.3s ease;
   box-sizing: border-box;
-  /* 精确计算，补偿边框所占空间 */
-  width: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + 12) + "px"');
-  height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12) + "px"');
+  /* 使用canvas尺寸计算phone-frame尺寸 */
+  width: v-bind('(canvasWidth + 12) + "px"');
+  height: v-bind('(canvasHeight + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12) + "px"');
 }
 
 /* 横屏样式 */
 .phone-frame.landscape {
   border-radius: 20px;
-  width: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + 12) + "px"');
-  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12) + "px"');
+  /* 横屏模式也使用canvas尺寸 */
+  width: v-bind('(canvasWidth + 12) + "px"');
+  height: v-bind('(canvasHeight + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12) + "px"');
 }
 
 :deep(.device-stream-container) {
@@ -501,7 +513,7 @@ const onLoadingStart = (deviceId) => {
 
 /* 横屏样式 */
 .stream-window.landscape {
-  width: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + 12) + "px"');
-  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12 + 44) + "px"'); /* 精确计算：设备高度 + 按钮高度 + 边框(6px*2) + header */
+  width: v-bind('(canvasWidth + 12) + "px"');
+  height: v-bind('(canvasHeight + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12 + 44) + "px"');
 }
 </style> 
