@@ -111,11 +111,11 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     }
 
     protected scaleCanvas(width: number, height: number): void {
-        console.log('原始视频尺寸:', { width, height });
+        console.log('[WebCodecsPlayer]原始视频尺寸:', { width, height });
         
         // 获取设备像素比
         const dpr = window.devicePixelRatio || 1;
-        console.log('设备像素比:', dpr);
+        console.log('[WebCodecsPlayer]设备像素比:', dpr);
         
         // 计算实际显示尺寸
         const displayWidth = Math.round(width);
@@ -125,8 +125,8 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
         const canvasWidth = Math.round(displayWidth * dpr);
         const canvasHeight = Math.round(displayHeight * dpr);
         
-        console.log('显示尺寸:', { displayWidth, displayHeight });
-        console.log('Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
+        console.log('[WebCodecsPlayer]显示尺寸:', { displayWidth, displayHeight });
+        console.log('[WebCodecsPlayer]Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
         
         const screenInfo = new ScreenInfo(new Rect(0, 0, width, height), new Size(displayWidth, displayHeight), 0);
         this.emit('input-video-resize', screenInfo);

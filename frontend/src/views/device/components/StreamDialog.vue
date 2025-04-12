@@ -1,7 +1,7 @@
 <template>
   <div v-if="modelValue" class="stream-dialog-container">
     <div class="stream-backdrop" />
-    <div class="stream-window" ref="dialogRef">
+    <div class="stream-window" ref="dialogRef" :class="{ 'landscape': isLandscape }">
       <div class="stream-header" @mousedown="startDrag">
         <span class="stream-title">{{ title }}</span>
         <button class="close-button" @click="closeDialog">
@@ -158,25 +158,19 @@ const onOrientationChange = (data) => {
 const adjustWindowForOrientation = (data) => {
   if (!dialogRef.value) return;
   
-  // 获取当前窗口尺寸
-  const currentWidth = dialogRef.value.clientWidth;
-  const currentHeight = dialogRef.value.clientHeight;
-  
+  // 不再手动计算尺寸，而是依赖CSS类来设置正确的尺寸
   if (data.orientation === 'landscape') {
-    // 横屏：确保宽度大于高度
-    if (currentWidth < currentHeight) {
-      // 交换宽高
-      dialogRef.value.style.width = `${currentHeight}px`;
-      dialogRef.value.style.height = `${currentWidth}px`;
-    }
+    // 横屏模式
+    isLandscape.value = true;
   } else {
-    // 竖屏：确保高度大于宽度
-    if (currentWidth > currentHeight) {
-      // 交换宽高
-      dialogRef.value.style.width = `${currentHeight}px`;
-      dialogRef.value.style.height = `${currentWidth}px`;
-    }
+    // 竖屏模式
+    isLandscape.value = false;
   }
+  
+  // 给UI一点时间重新渲染
+  setTimeout(() => {
+    console.log(`窗口调整为 ${isLandscape.value ? '横屏' : '竖屏'} 模式`);
+  }, 50);
 };
 
 // 重试连接
@@ -295,16 +289,16 @@ const handleResize = (e: MouseEvent) => {
   const deltaY = e.clientY - initialPosition.value.y;
   
   const newWidth = Math.max(
-    STREAM_WINDOW_CONFIG.MIN_WIDTH,
+    STREAM_WINDOW_CONFIG.LIMITS.MIN_WIDTH,
     Math.min(
-      STREAM_WINDOW_CONFIG.MAX_WIDTH,
+      STREAM_WINDOW_CONFIG.LIMITS.MAX_WIDTH,
       initialSize.value.width + deltaX
     )
   );
   const newHeight = Math.max(
-    STREAM_WINDOW_CONFIG.MIN_HEIGHT,
+    STREAM_WINDOW_CONFIG.LIMITS.MIN_HEIGHT,
     Math.min(
-      STREAM_WINDOW_CONFIG.MAX_HEIGHT,
+      STREAM_WINDOW_CONFIG.LIMITS.MAX_HEIGHT,
       initialSize.value.height + deltaY
     )
   );
@@ -368,8 +362,8 @@ const onLoadingStart = (deviceId) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"');
-  height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"');
+  width: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + 12) + "px"'); /* 540px + 两侧边框 */
+  height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 56) + "px"'); /* 960px + 52px + 44px头部 + 12px边框 */
   background-color: #000;
   border-radius: 20px;
   overflow: hidden;
@@ -467,12 +461,9 @@ const onLoadingStart = (deviceId) => {
 }
 
 :deep(.device-stream-container) {
-  flex: 1;
   border-radius: 30px;
   overflow: hidden;
   background-color: #000;
-  width: 100% !important;
-  height: 100% !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -600,5 +591,11 @@ const onLoadingStart = (deviceId) => {
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
   }
+}
+
+/* 横屏样式 */
+.stream-window.landscape {
+  width: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + 12) + "px"'); /* 960px + 两侧边框 */
+  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 56) + "px"'); /* 540px + 52px + 44px头部 + 12px边框 */
 }
 </style> 

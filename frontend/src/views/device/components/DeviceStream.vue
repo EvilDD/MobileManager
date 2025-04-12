@@ -143,13 +143,13 @@
     const parentHeight = parentRect.height;
     
     if (landscape) {
-      // 横屏模式：交换宽高，确保完全匹配config配置
-      width = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT, parentWidth); // 990
-      height = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_WIDTH, parentHeight); // 480
+      // 横屏模式
+      width = Math.min(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH, parentWidth);
+      height = Math.min(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentHeight);
     } else {
-      // 竖屏模式：正常宽高，完全匹配config配置
-      width = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_WIDTH, parentWidth);  // 480
-      height = Math.min(STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT, parentHeight); // 990
+      // 竖屏模式
+      width = Math.min(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH, parentWidth);
+      height = Math.min(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT, parentHeight);
     }
     
     console.log(`调整设备视图尺寸: ${width}x${height}, 横屏: ${landscape}`);
@@ -390,13 +390,14 @@
   
   <style scoped>
   .device-stream-container {
-    width: 100% !important;
-    height: 100% !important;
+    width: v-bind('STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + "px"') !important;
+    height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"') !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     overflow: hidden !important;
     position: relative !important;
+    flex: none !important; /* 防止被弹性布局影响尺寸 */
   }
   
   .device-stream-frame {
@@ -458,15 +459,15 @@
   
   /* 横屏样式 */
   .device-stream-container.landscape {
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
+    width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"');
+    height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"');
     transform: rotate(0deg); /* 确保容器本身不旋转 */
   }
   
   /* 横屏模式下的iframe */
   .landscape .device-stream-frame {
-    width: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_HEIGHT + "px"'); /* 990px */
-    height: v-bind('STREAM_WINDOW_CONFIG.DEFAULT_WIDTH + "px"'); /* 480px */
+    width: v-bind('STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + "px"');
+    height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT) + "px"');
   }
   
   /* 修改 wscrcpy 中的样式 */
