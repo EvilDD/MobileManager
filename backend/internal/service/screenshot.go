@@ -271,11 +271,11 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 		format = defaultFormat
 	}
 
-	startTime := time.Now()
-	defer func() {
-		g.Log().Debug(ctx, fmt.Sprintf("设备[%s]截图请求完成, 耗时: %.2f毫秒, 成功: %v",
-			deviceId, float64(time.Since(startTime).Milliseconds()), res.Success))
-	}()
+	// startTime := time.Now()
+	// defer func() {
+	// 	g.Log().Debug(ctx, fmt.Sprintf("设备[%s]截图请求完成, 耗时: %.2f毫秒, 成功: %v",
+	// 		deviceId, float64(time.Since(startTime).Milliseconds()), res.Success))
+	// }()
 
 	res = &v1.ScreenshotRes{
 		DeviceId:  deviceId,
