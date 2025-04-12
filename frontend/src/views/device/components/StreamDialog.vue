@@ -308,8 +308,9 @@ const onLoadingStart = (deviceId) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + 12) + "px"'); /* 540px + 两侧边框 */
-  height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 56) + "px"'); /* 960px + 52px + 44px头部 + 12px边框 */
+  /* 基于phone-frame的尺寸计算，加上header高度和外边距 */
+  width: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + 12) + "px"'); /* 保持宽度不变 */
+  height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12 + 44) + "px"'); /* 精确计算：设备高度 + 按钮高度 + 边框(6px*2) + header */
   background-color: #000;
   border-radius: 20px;
   overflow: hidden;
@@ -325,6 +326,8 @@ const onLoadingStart = (deviceId) => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
+  height: 44px; /* 明确指定高度 */
+  box-sizing: border-box; /* 确保padding包含在高度内 */
   background-color: #1a1a1a;
   cursor: move;
   position: relative;
@@ -361,7 +364,8 @@ const onLoadingStart = (deviceId) => {
 
 .phone-frame {
   position: relative;
-  flex: 1;
+  /* 移除flex:1，改为固定尺寸 */
+  flex: none;
   background-color: #000;
   border-radius: 36px;
   border: 6px solid #1a1a1a;
@@ -372,11 +376,16 @@ const onLoadingStart = (deviceId) => {
   flex-direction: column;
   transition: all 0.3s ease;
   box-sizing: border-box;
+  /* 精确计算，补偿边框所占空间 */
+  width: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.WIDTH + 12) + "px"');
+  height: v-bind('(STREAM_WINDOW_CONFIG.PORTRAIT.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12) + "px"');
 }
 
 /* 横屏样式 */
 .phone-frame.landscape {
   border-radius: 20px;
+  width: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + 12) + "px"');
+  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12) + "px"');
 }
 
 :deep(.device-stream-container) {
@@ -492,7 +501,7 @@ const onLoadingStart = (deviceId) => {
 
 /* 横屏样式 */
 .stream-window.landscape {
-  width: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + 12) + "px"'); /* 960px + 两侧边框 */
-  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 56) + "px"'); /* 540px + 52px + 44px头部 + 12px边框 */
+  width: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.WIDTH + 12) + "px"');
+  height: v-bind('(STREAM_WINDOW_CONFIG.LANDSCAPE.HEIGHT + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT + 12 + 44) + "px"'); /* 精确计算：设备高度 + 按钮高度 + 边框(6px*2) + header */
 }
 </style> 
