@@ -30,7 +30,6 @@
       </div>
       
       <div class="phone-frame" :class="{ 'landscape': isLandscape }">
-        <div class="phone-notch" />
         <device-stream 
           v-if="visible && deviceId && isReady" 
           ref="streamRef"
@@ -43,7 +42,6 @@
           @orientation-change="onOrientationChange"
         />
       </div>
-      <div class="resize-handle" @mousedown="startResize" />
     </div>
   </div>
 </template>
@@ -101,11 +99,6 @@ const title = computed(() => {
 // 拖拽相关状态
 const isDragging = ref(false);
 const dragOffset = ref({ x: 0, y: 0 });
-
-// 缩放相关状态
-const isResizing = ref(false);
-const initialSize = ref({ width: 0, height: 0 });
-const initialPosition = ref({ x: 0, y: 0 });
 
 // 加载中状态
 const isLoading = ref(false);
@@ -269,66 +262,10 @@ const stopDrag = () => {
   document.removeEventListener('mouseup', stopDrag);
 };
 
-// 开始缩放
-const startResize = (e: MouseEvent) => {
-  if (!dialogRef.value) return;
-  
-  isResizing.value = true;
-  const rect = dialogRef.value.getBoundingClientRect();
-  
-  initialSize.value = {
-    width: rect.width,
-    height: rect.height
-  };
-  
-  initialPosition.value = {
-    x: e.clientX,
-    y: e.clientY
-  };
-  
-  document.addEventListener('mousemove', handleResize);
-  document.addEventListener('mouseup', stopResize);
-};
-
-// 处理缩放
-const handleResize = (e: MouseEvent) => {
-  if (!isResizing.value || !dialogRef.value) return;
-  
-  const deltaX = e.clientX - initialPosition.value.x;
-  const deltaY = e.clientY - initialPosition.value.y;
-  
-  const newWidth = Math.max(
-    STREAM_WINDOW_CONFIG.LIMITS.MIN_WIDTH,
-    Math.min(
-      STREAM_WINDOW_CONFIG.LIMITS.MAX_WIDTH,
-      initialSize.value.width + deltaX
-    )
-  );
-  const newHeight = Math.max(
-    STREAM_WINDOW_CONFIG.LIMITS.MIN_HEIGHT,
-    Math.min(
-      STREAM_WINDOW_CONFIG.LIMITS.MAX_HEIGHT,
-      initialSize.value.height + deltaY
-    )
-  );
-  
-  dialogRef.value.style.width = `${newWidth}px`;
-  dialogRef.value.style.height = `${newHeight}px`;
-};
-
-// 停止缩放
-const stopResize = () => {
-  isResizing.value = false;
-  document.removeEventListener('mousemove', handleResize);
-  document.removeEventListener('mouseup', stopResize);
-};
-
 // 组件卸载前清理事件监听
 onBeforeUnmount(() => {
   document.removeEventListener('mousemove', handleDrag);
   document.removeEventListener('mouseup', stopDrag);
-  document.removeEventListener('mousemove', handleResize);
-  document.removeEventListener('mouseup', stopResize);
 });
 
 // 暴露方法给父组件
@@ -442,33 +379,6 @@ const onLoadingStart = (deviceId) => {
   border-radius: 20px;
 }
 
-.phone-frame.landscape .phone-notch {
-  left: auto;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 120px;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 0;
-  border-top-left-radius: 10px;
-}
-
-.phone-notch {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 120px;
-  height: 20px;
-  background-color: #1a1a1a;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
-  z-index: 10;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  transition: all 0.3s ease;
-}
-
 :deep(.device-stream-container) {
   border-radius: 30px;
   overflow: hidden;
@@ -490,28 +400,6 @@ const onLoadingStart = (deviceId) => {
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
-}
-
-/* 添加缩放手柄样式 */
-.resize-handle {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 20px;
-  height: 20px;
-  cursor: nwse-resize;
-  z-index: 10;
-}
-
-.resize-handle::after {
-  content: '';
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 12px;
-  height: 12px;
-  border-right: 2px solid rgba(255, 255, 255, 0.5);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.5);
 }
 
 .retry-button {
@@ -599,13 +487,6 @@ const onLoadingStart = (deviceId) => {
   .phone-frame {
     border-radius: 20px;
     border-width: 4px;
-  }
-  
-  .phone-notch {
-    width: 100px;
-    height: 16px;
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
   }
 }
 
