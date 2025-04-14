@@ -89,32 +89,35 @@ function startPasteEventListening(client: StreamClientScrcpy): void {
         if (!isPasteListenerActive) return;
         console.log('检测到粘贴事件!');
         const text = e.clipboardData?.getData('text');
-        if (text && text !== lastClipboardText) {
-            lastClipboardText = text;
-            console.log('从粘贴事件获取文本:', text.substring(0, 20) + '...');
+        if (text) {
+            console.log('从粘贴事件获取文本，发送到设备:', text.substring(0, 20) + (text.length > 20 ? '...' : ''));
             client.sendMessage(CommandControlMessage.createSetClipboardCommand(text));
+            // 仍然记录最后的文本以便跟踪
+            lastClipboardText = text;
             console.log('已同步粘贴内容到设备');
+        } else {
+            console.log('粘贴事件不包含文本内容');
         }
     });
 
-    // 显示提示
-    const notice = document.createElement('div');
-    notice.textContent = '请在此页面使用Ctrl+V粘贴以同步到设备';
-    notice.style.position = 'fixed';
-    notice.style.bottom = '10px';
-    notice.style.left = '10px';
-    notice.style.backgroundColor = 'rgba(0,0,0,0.7)';
-    notice.style.color = 'white';
-    notice.style.padding = '5px 10px';
-    notice.style.borderRadius = '3px';
-    notice.style.zIndex = '9999';
-    notice.style.fontSize = '12px';
-    document.body.appendChild(notice);
+    // // 显示提示
+    // const notice = document.createElement('div');
+    // notice.textContent = '请在此页面使用Ctrl+V粘贴以同步到设备';
+    // notice.style.position = 'fixed';
+    // notice.style.bottom = '10px';
+    // notice.style.left = '10px';
+    // notice.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    // notice.style.color = 'white';
+    // notice.style.padding = '5px 10px';
+    // notice.style.borderRadius = '3px';
+    // notice.style.zIndex = '9999';
+    // notice.style.fontSize = '12px';
+    // document.body.appendChild(notice);
 
-    // 5秒后移除提示
-    setTimeout(() => {
-        document.body.removeChild(notice);
-    }, 5000);
+    // // 5秒后移除提示
+    // setTimeout(() => {
+    //     document.body.removeChild(notice);
+    // }, 5000);
 }
 
 const BUTTONS = [
