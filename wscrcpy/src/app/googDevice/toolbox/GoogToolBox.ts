@@ -10,69 +10,47 @@ import { BasePlayer } from '../../player/BasePlayer';
 import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
 
 // 保存剪贴板监听器ID，用于停止监听
-let clipboardMonitoringInterval: number | null = null;
 let lastClipboardText = '';
 let isPasteListenerActive = false;
+let isCopyListenerActive = false;
 
 // 开始监听剪贴板
 function startClipboardMonitoring(client: StreamClientScrcpy): void {
-    if (clipboardMonitoringInterval !== null) {
+    if (isPasteListenerActive || isCopyListenerActive) {
         return; // 已经在监听中
     }
 
-    console.log('开始监听PC剪贴板变化...');
-    // 尝试获取初始剪贴板内容
-    try {
-        navigator.clipboard
-            .readText()
-            .then((text) => {
-                console.log('成功读取初始剪贴板内容:', text ? text.substring(0, 20) + '...' : '(空)');
-                lastClipboardText = text;
-            })
-            .catch((err) => {
-                console.error('无法读取剪贴板(权限问题):', err);
-                // 如果读取失败，改为监听粘贴事件
-                startPasteEventListening(client);
-            });
-    } catch (e) {
-        console.error('剪贴板API不可用:', e);
-        // 如果API不可用，改为监听粘贴事件
-        startPasteEventListening(client);
-        return;
-    }
-
-    // 每秒检查一次剪贴板内容
-    clipboardMonitoringInterval = window.setInterval(() => {
-        try {
-            navigator.clipboard
-                .readText()
-                .then((text) => {
-                    // 只有当剪贴板内容变化时才发送
-                    if (text && text !== lastClipboardText) {
-                        lastClipboardText = text;
-                        console.log('检测到剪贴板变化，同步内容:', text.substring(0, 20) + '...');
-                        client.sendMessage(CommandControlMessage.createSetClipboardCommand(text));
-                    }
-                })
-                .catch((err) => {
-                    console.error('读取剪贴板失败(可能需要用户交互):', err);
-                    // 如果持续失败，改为监听粘贴事件
-                    if (clipboardMonitoringInterval !== null) {
-                        window.clearInterval(clipboardMonitoringInterval);
-                        clipboardMonitoringInterval = null;
+    console.log('启动剪贴板监听...');
+    
+    // 添加复制事件监听
+    document.addEventListener('copy', function copyHandler() {
+        console.log('检测到复制事件(Ctrl+C)!');
+        // 复制事件触发后短暂延迟再读取剪贴板，确保内容已更新
+        setTimeout(() => {
+            try {
+                navigator.clipboard.readText()
+                    .then((text) => {
+                        if (text && text !== lastClipboardText) {
+                            lastClipboardText = text;
+                            console.log('检测到剪贴板内容变化，发送到设备:', text.substring(0, 20) + (text.length > 20 ? '...' : ''));
+                            client.sendMessage(CommandControlMessage.createSetClipboardCommand(text));
+                        }
+                    })
+                    .catch((err) => {
+                        console.error('复制事件后无法读取剪贴板:', err);
+                        // 如果读取失败，确保粘贴事件监听已启动
                         startPasteEventListening(client);
-                    }
-                });
-        } catch (e) {
-            console.error('检查剪贴板时出错:', e);
-            // 如果持续出错，改为监听粘贴事件
-            if (clipboardMonitoringInterval !== null) {
-                window.clearInterval(clipboardMonitoringInterval);
-                clipboardMonitoringInterval = null;
+                    });
+            } catch (e) {
+                console.error('处理复制事件时出错:', e);
                 startPasteEventListening(client);
             }
-        }
-    }, 1000);
+        }, 100);
+    });
+    isCopyListenerActive = true;
+    
+    // 同时启动粘贴事件监听作为备选
+    startPasteEventListening(client);
 }
 
 // 开始监听粘贴事件（作为备选方案）
