@@ -9,57 +9,31 @@ import { StreamClientScrcpy } from '../client/StreamClientScrcpy';
 import { BasePlayer } from '../../player/BasePlayer';
 import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
 
-// 保存剪贴板监听器ID，用于停止监听
-let lastClipboardText = '';
+// 保存监听状态
 let isPasteListenerActive = false;
-let isCopyListenerActive = false;
 
 // 开始监听剪贴板
 function startClipboardMonitoring(client: StreamClientScrcpy): void {
-    if (isPasteListenerActive || isCopyListenerActive) {
+    if (isPasteListenerActive) {
         return; // 已经在监听中
     }
 
     console.log('启动剪贴板监听...');
     
-    // 添加复制事件监听
-    document.addEventListener('copy', function copyHandler() {
-        console.log('检测到复制事件(Ctrl+C)!');
-        // 复制事件触发后短暂延迟再读取剪贴板，确保内容已更新
-        setTimeout(() => {
-            try {
-                navigator.clipboard.readText()
-                    .then((text) => {
-                        if (text && text !== lastClipboardText) {
-                            lastClipboardText = text;
-                            console.log('检测到剪贴板内容变化，发送到设备:', text.substring(0, 20) + (text.length > 20 ? '...' : ''));
-                            client.sendMessage(CommandControlMessage.createSetClipboardCommand(text));
-                        }
-                    })
-                    .catch((err) => {
-                        console.error('复制事件后无法读取剪贴板:', err);
-                        // 如果读取失败，确保粘贴事件监听已启动
-                        startPasteEventListening(client);
-                    });
-            } catch (e) {
-                console.error('处理复制事件时出错:', e);
-                startPasteEventListening(client);
-            }
-        }, 100);
-    });
-    isCopyListenerActive = true;
-    
-    // 同时启动粘贴事件监听作为备选
+    // 直接启动粘贴事件监听，移除复制事件监听（复制事件监听不稳定）
     startPasteEventListening(client);
+    
+    // 添加视觉提示，告诉用户首次需要在页面内使用Ctrl+V
+    showClipboardHelpTip();
 }
 
-// 开始监听粘贴事件（作为备选方案）
+// 开始监听粘贴事件（作为主要方案）
 function startPasteEventListening(client: StreamClientScrcpy): void {
     if (isPasteListenerActive) {
         return;
     }
 
-    console.log('改为监听粘贴事件(Ctrl+V)...');
+    console.log('监听粘贴事件(Ctrl+V)...');
     isPasteListenerActive = true;
 
     // 添加粘贴事件监听
@@ -70,32 +44,74 @@ function startPasteEventListening(client: StreamClientScrcpy): void {
         if (text) {
             console.log('从粘贴事件获取文本，发送到设备:', text.substring(0, 20) + (text.length > 20 ? '...' : ''));
             client.sendMessage(CommandControlMessage.createSetClipboardCommand(text));
-            // 仍然记录最后的文本以便跟踪
-            lastClipboardText = text;
             console.log('已同步粘贴内容到设备');
         } else {
             console.log('粘贴事件不包含文本内容');
         }
     });
+}
 
-    // // 显示提示
-    // const notice = document.createElement('div');
-    // notice.textContent = '请在此页面使用Ctrl+V粘贴以同步到设备';
-    // notice.style.position = 'fixed';
-    // notice.style.bottom = '10px';
-    // notice.style.left = '10px';
-    // notice.style.backgroundColor = 'rgba(0,0,0,0.7)';
-    // notice.style.color = 'white';
-    // notice.style.padding = '5px 10px';
-    // notice.style.borderRadius = '3px';
-    // notice.style.zIndex = '9999';
-    // notice.style.fontSize = '12px';
-    // document.body.appendChild(notice);
-
-    // // 5秒后移除提示
-    // setTimeout(() => {
-    //     document.body.removeChild(notice);
-    // }, 5000);
+// 显示帮助提示
+function showClipboardHelpTip(): void {
+    const tipId = 'clipboard-help-tip';
+    
+    // 如果已经存在提示，不再重复创建
+    if (document.getElementById(tipId)) {
+        return;
+    }
+    
+    // 创建提示元素
+    const container = document.createElement('div');
+    container.id = tipId;
+    container.style.position = 'fixed';
+    container.style.bottom = '10px';
+    container.style.left = '10px';
+    container.style.backgroundColor = 'rgba(0,0,0,0.8)';
+    container.style.color = 'white';
+    container.style.padding = '12px 16px';
+    container.style.borderRadius = '6px';
+    container.style.zIndex = '9999';
+    container.style.maxWidth = '90%';
+    container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+    container.style.fontFamily = 'Arial, sans-serif';
+    
+    // 添加标题
+    const title = document.createElement('div');
+    title.textContent = '如何将PC剪贴板内容发送到设备';
+    title.style.fontWeight = 'bold';
+    title.style.fontSize = '14px';
+    title.style.marginBottom = '8px';
+    
+    // 添加说明
+    const steps = document.createElement('div');
+    steps.innerHTML = 
+        '1. 在PC上复制需要的文本<br>' +
+        '2. <b>在此页面内点击并按Ctrl+V</b><br>' +
+        '3. 内容将自动同步到设备';
+    steps.style.fontSize = '12px';
+    steps.style.lineHeight = '1.5';
+    
+    // 添加关闭按钮
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '了解';
+    closeBtn.style.marginTop = '10px';
+    closeBtn.style.padding = '4px 12px';
+    closeBtn.style.border = 'none';
+    closeBtn.style.borderRadius = '4px';
+    closeBtn.style.backgroundColor = '#3f85ff';
+    closeBtn.style.color = 'white';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.fontSize = '12px';
+    closeBtn.style.fontWeight = 'bold';
+    closeBtn.onclick = () => {
+        container.style.display = 'none';
+    };
+    
+    // 组装提示
+    container.appendChild(title);
+    container.appendChild(steps);
+    container.appendChild(closeBtn);
+    document.body.appendChild(container);
 }
 
 const BUTTONS = [
