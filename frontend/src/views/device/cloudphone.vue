@@ -30,6 +30,7 @@ import GroupBadge from "./components/GroupBadge.vue";
 import DeviceStream from "./components/DeviceStream.vue";
 import DeviceScreenshot from "./components/DeviceScreenshot.vue";
 import StreamDialog from "./components/StreamDialog.vue";
+import MoveGroupDialog from "./components/MoveGroupDialog.vue";
 import {
   Plus,
   Refresh,
@@ -1100,29 +1101,12 @@ onMounted(() => {
     />
 
     <!-- 移动分组对话框 -->
-    <el-dialog
-      v-model="showMoveGroupDialog"
-      title="移动到分组"
-      width="30%"
-      :close-on-click-modal="false"
-    >
-      <el-radio-group v-model="selectedGroupId" class="group-radio-list">
-        <el-radio
-          v-for="group in filteredGroups"
-          :key="group.id"
-          :label="group.id"
-          class="group-radio-item"
-        >
-          {{ group.name }}
-        </el-radio>
-      </el-radio-group>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showMoveGroupDialog = false">取消</el-button>
-          <el-button type="primary" @click="handleConfirmMoveGroup">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
+    <move-group-dialog
+      v-model:visible="showMoveGroupDialog"
+      :groups="filteredGroups"
+      :loading="loading"
+      @confirm="handleConfirmMoveGroup"
+    />
 
     <!-- 修改应用选择对话框 -->
     <el-dialog
