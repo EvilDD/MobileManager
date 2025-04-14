@@ -810,47 +810,49 @@ onMounted(() => {
         </el-input>
       </div>
 
-      <div class="group-list">
-        <div
-          v-for="group in filteredGroups"
-          :key="group.id"
-          class="group-item"
-          :class="{ active: activeGroup === group.id }"
-          @click="changeGroup(group.id)"
-        >
-          <div class="group-item-content">
-            <div class="group-icon">
-              <GroupBadge v-if="group.id > 0" :group-id="group.id" small />
-              <el-icon v-else><Grid /></el-icon>
-            </div>
-            <div class="group-info">
-              <div class="group-name">{{ group.name }}</div>
-              <div class="group-count">
-                {{ group.deviceCount }} 台设备
+      <el-scrollbar height="calc(100vh - 200px)" always>
+        <div class="group-list-content">
+          <div
+            v-for="group in filteredGroups"
+            :key="group.id"
+            class="group-item"
+            :class="{ active: activeGroup === group.id }"
+            @click="changeGroup(group.id)"
+          >
+            <div class="group-item-content">
+              <div class="group-icon">
+                <GroupBadge v-if="group.id > 0" :group-id="group.id" small />
+                <el-icon v-else><Grid /></el-icon>
               </div>
-            </div>
-            <!-- 添加删除图标，新设备分组不显示 -->
-            <div v-if="group.id > 0" class="group-actions">
-              <el-button
-                size="small"
-                type="primary"
-                circle
-                class="action-btn"
-                :icon="Edit"
-                @click="editGroup(group, $event)"
-              />
-              <el-button
-                size="small"
-                type="danger"
-                circle
-                class="action-btn"
-                :icon="Delete"
-                @click="confirmDeleteGroup(group, $event)"
-              />
+              <div class="group-info">
+                <div class="group-name">{{ group.name }}</div>
+                <div class="group-count">
+                  {{ group.deviceCount }} 台设备
+                </div>
+              </div>
+              <!-- 添加删除图标，新设备分组不显示 -->
+              <div v-if="group.id > 0" class="group-actions">
+                <el-button
+                  size="small"
+                  type="primary"
+                  circle
+                  class="action-btn"
+                  :icon="Edit"
+                  @click="editGroup(group, $event)"
+                />
+                <el-button
+                  size="small"
+                  type="danger"
+                  circle
+                  class="action-btn"
+                  :icon="Delete"
+                  @click="confirmDeleteGroup(group, $event)"
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </el-scrollbar>
     </div>
 
     <!-- 右侧内容区 -->
@@ -1213,6 +1215,14 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  height: 100%; /* 确保占满父容器高度 */
+  overflow: hidden; /* 防止自身滚动 */
+}
+
+/* 设置 el-scrollbar 样式 */
+.group-sidebar .el-scrollbar {
+  flex: 1;
+  height: auto !important;
 }
 
 .group-header {
@@ -1249,10 +1259,8 @@ onMounted(() => {
   border-bottom: 1px solid #f0f0f0;
 }
 
-.group-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 0;
+.group-list-content {
+  padding: 12px 8px;
 }
 
 .group-item {
