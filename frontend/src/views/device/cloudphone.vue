@@ -810,7 +810,7 @@ onMounted(() => {
         </el-input>
       </div>
 
-      <el-scrollbar height="calc(100vh - 200px)" always>
+      <el-scrollbar height="calc(100vh - 200px)">
         <div class="group-list-content">
           <div
             v-for="group in filteredGroups"
@@ -957,73 +957,75 @@ onMounted(() => {
       </div>
 
       <!-- 云手机列表 -->
-      <div v-loading="loading" class="phone-grid" :class="{ 'landscape-mode': isLandscape }">
-        <div
-          v-for="device in filteredDevices"
-          :key="device.id"
-          class="phone-card"
-        >
-          <div class="phone-header">
-            <!-- 选择框和设备ID布局调整 -->
-            <div class="header-left">
-              <el-checkbox
-                :model-value="selectedDevices.includes(device.deviceId)"
-                @change="(val: boolean) => val ? selectedDevices.push(device.deviceId) : selectedDevices = selectedDevices.filter(id => id !== device.deviceId)"
+      <el-scrollbar height="calc(100vh - 170px)">
+        <div v-loading="loading" class="phone-grid" :class="{ 'landscape-mode': isLandscape }">
+          <div
+            v-for="device in filteredDevices"
+            :key="device.id"
+            class="phone-card"
+          >
+            <div class="phone-header">
+              <!-- 选择框和设备ID布局调整 -->
+              <div class="header-left">
+                <el-checkbox
+                  :model-value="selectedDevices.includes(device.deviceId)"
+                  @change="(val: boolean) => val ? selectedDevices.push(device.deviceId) : selectedDevices = selectedDevices.filter(id => id !== device.deviceId)"
+                />
+                <div class="device-id">{{ device.deviceId }}</div>
+              </div>
+              <div class="phone-status" :class="{ online: device.status === 'online' }" />
+            </div>
+
+            <div class="phone-preview">
+              <device-screenshot
+                v-if="device.status === 'online'"
+                :device-id="device.deviceId"
+                :auto-capture="true"
+                :quality="80"
+                :auto-refresh="autoRefresh"
+                :refresh-interval="refreshInterval"
+                :is-landscape="isLandscape"
+                @click="handleScreenshotClick(device)"
+                @screenshot-ready="(imageData) => handleScreenshotReady(device.deviceId, imageData)"
+                @screenshot-error="(err) => handleScreenshotError(device.deviceId, err)"
+                :data-device-id="device.deviceId"
+                ref="screenshotRef"
               />
-              <div class="device-id">{{ device.deviceId }}</div>
+              <div v-else class="offline-placeholder">
+                <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
+                <div class="offline-text">设备离线</div>
+              </div>
             </div>
-            <div class="phone-status" :class="{ online: device.status === 'online' }" />
+
+            <!-- 操作按钮改为右下角的更多操作按钮 -->
+            <div class="more-actions">
+              <el-dropdown trigger="click">
+                <el-button type="primary" circle size="small">
+                  <el-icon><More /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="connectToPhone(device)">
+                      <el-icon><VideoPlay /></el-icon>连接
+                    </el-dropdown-item>
+                    <el-dropdown-item @click="restartPhone(device, $event)">
+                      <el-icon><Refresh /></el-icon>重启
+                    </el-dropdown-item>
+                    <el-dropdown-item @click="shutdownPhone(device, $event)">
+                      <el-icon><Switch /></el-icon>关机
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </div>
 
-          <div class="phone-preview">
-            <device-screenshot
-              v-if="device.status === 'online'"
-              :device-id="device.deviceId"
-              :auto-capture="true"
-              :quality="80"
-              :auto-refresh="autoRefresh"
-              :refresh-interval="refreshInterval"
-              :is-landscape="isLandscape"
-              @click="handleScreenshotClick(device)"
-              @screenshot-ready="(imageData) => handleScreenshotReady(device.deviceId, imageData)"
-              @screenshot-error="(err) => handleScreenshotError(device.deviceId, err)"
-              :data-device-id="device.deviceId"
-              ref="screenshotRef"
-            />
-            <div v-else class="offline-placeholder">
-              <img src="@/assets/user.jpg" alt="手机预览" class="preview-img" />
-              <div class="offline-text">设备离线</div>
-            </div>
-          </div>
-
-          <!-- 操作按钮改为右下角的更多操作按钮 -->
-          <div class="more-actions">
-            <el-dropdown trigger="click">
-              <el-button type="primary" circle size="small">
-                <el-icon><More /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="connectToPhone(device)">
-                    <el-icon><VideoPlay /></el-icon>连接
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="restartPhone(device, $event)">
-                    <el-icon><Refresh /></el-icon>重启
-                  </el-dropdown-item>
-                  <el-dropdown-item @click="shutdownPhone(device, $event)">
-                    <el-icon><Switch /></el-icon>关机
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+          <!-- 当没有数据时显示 -->
+          <div v-if="devices.length === 0 && !loading" class="no-data">
+            暂无云手机数据
           </div>
         </div>
-
-        <!-- 当没有数据时显示 -->
-        <div v-if="devices.length === 0 && !loading" class="no-data">
-          暂无云手机数据
-        </div>
-      </div>
+      </el-scrollbar>
     </div>
 
     <!-- 添加分组对话框 -->
@@ -1225,6 +1227,16 @@ onMounted(() => {
   height: auto !important;
 }
 
+/* 滚动条悬停显示样式 */
+.group-sidebar .el-scrollbar :deep(.el-scrollbar__bar) {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.group-sidebar:hover .el-scrollbar :deep(.el-scrollbar__bar) {
+  opacity: 1;
+}
+
 .group-header {
   display: flex;
   justify-content: space-between;
@@ -1372,7 +1384,6 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 24px;
-  overflow-y: auto;
   padding-bottom: 24px;
   padding-top: 12px;
 }
@@ -1613,5 +1624,21 @@ onMounted(() => {
 .task-results {
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* 内容区域滚动条样式 */
+.content-area .el-scrollbar {
+  flex: 1;
+  height: auto !important;
+}
+
+/* 内容区域滚动条悬停显示 */
+.content-area .el-scrollbar :deep(.el-scrollbar__bar) {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.content-area:hover .el-scrollbar :deep(.el-scrollbar__bar) {
+  opacity: 1;
 }
 </style>
