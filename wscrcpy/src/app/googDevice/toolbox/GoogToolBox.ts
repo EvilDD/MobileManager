@@ -101,7 +101,7 @@ export class GoogToolBox extends ToolBox {
                 const element = el.getElement();
                 moreBox.style.display = element.checked ? 'block' : 'none';
             });
-            elements.unshift(more);
+            elements.push(more);
         }
         return new GoogToolBox(elements);
     }
