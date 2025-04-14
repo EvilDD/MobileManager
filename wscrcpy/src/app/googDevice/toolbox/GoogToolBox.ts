@@ -18,27 +18,50 @@ function startClipboardMonitoring(client: StreamClientScrcpy): void {
         return; // 已经在监听中
     }
 
-    console.log('启动剪贴板监听...');
-    
-    // 直接启动粘贴事件监听，移除复制事件监听（复制事件监听不稳定）
-    startPasteEventListening(client);
-    
-    // 添加视觉提示，告诉用户首次需要在页面内使用Ctrl+V
-    showClipboardHelpTip();
-}
+    console.log('启动剪贴板监听 (隐形激活模式)...');
 
-// 开始监听粘贴事件（作为主要方案）
-function startPasteEventListening(client: StreamClientScrcpy): void {
-    if (isPasteListenerActive) {
-        return;
+    // 创建隐形覆盖层以捕获首次交互
+    const interactionOverlayId = 'invisible-interaction-layer';
+    if (!document.getElementById(interactionOverlayId)) {
+        const overlay = document.createElement('div');
+        overlay.id = interactionOverlayId;
+        overlay.style.position = 'absolute'; // 或 'fixed'，取决于布局
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.zIndex = '5000'; // 确保在内容之上，但在控件之下（如果需要）
+        overlay.style.opacity = '0'; // 完全透明
+        overlay.style.cursor = 'default'; // 保持默认光标
+
+        const activateListener = () => {
+            console.log('隐形层被点击，移除并聚焦iframe');
+            // 移除覆盖层
+            if (overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+            // 尝试聚焦iframe
+            try {
+                window.focus();
+                // 如果有更具体的元素（如播放器容器）可以聚焦，效果可能更好
+                // document.querySelector('.player-container')?.focus();
+            } catch (e) {
+                console.warn('尝试聚焦iframe失败:', e);
+            }
+            // 移除自身的监听器，确保只触发一次
+            overlay.removeEventListener('click', activateListener);
+            overlay.removeEventListener('touchstart', activateListener); // 兼容触摸设备
+        };
+
+        overlay.addEventListener('click', activateListener);
+        overlay.addEventListener('touchstart', activateListener); // 兼容触摸设备
+
+        document.body.appendChild(overlay);
+        console.log('添加了隐形交互层');
     }
 
-    console.log('监听粘贴事件(Ctrl+V)...');
-    isPasteListenerActive = true;
-
-    // 添加粘贴事件监听
-    document.addEventListener('paste', (e) => {
-        if (!isPasteListenerActive) return;
+    // 直接启动粘贴事件监听
+    document.addEventListener('paste', function pasteHandler(e) {
         console.log('检测到粘贴事件!');
         const text = e.clipboardData?.getData('text');
         if (text) {
@@ -49,69 +72,7 @@ function startPasteEventListening(client: StreamClientScrcpy): void {
             console.log('粘贴事件不包含文本内容');
         }
     });
-}
-
-// 显示帮助提示
-function showClipboardHelpTip(): void {
-    const tipId = 'clipboard-help-tip';
-    
-    // 如果已经存在提示，不再重复创建
-    if (document.getElementById(tipId)) {
-        return;
-    }
-    
-    // 创建提示元素
-    const container = document.createElement('div');
-    container.id = tipId;
-    container.style.position = 'fixed';
-    container.style.bottom = '10px';
-    container.style.left = '10px';
-    container.style.backgroundColor = 'rgba(0,0,0,0.8)';
-    container.style.color = 'white';
-    container.style.padding = '12px 16px';
-    container.style.borderRadius = '6px';
-    container.style.zIndex = '9999';
-    container.style.maxWidth = '90%';
-    container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-    container.style.fontFamily = 'Arial, sans-serif';
-    
-    // 添加标题
-    const title = document.createElement('div');
-    title.textContent = '如何将PC剪贴板内容发送到设备';
-    title.style.fontWeight = 'bold';
-    title.style.fontSize = '14px';
-    title.style.marginBottom = '8px';
-    
-    // 添加说明
-    const steps = document.createElement('div');
-    steps.innerHTML = 
-        '1. 在PC上复制需要的文本<br>' +
-        '2. <b>在此页面内点击并按Ctrl+V</b><br>' +
-        '3. 内容将自动同步到设备';
-    steps.style.fontSize = '12px';
-    steps.style.lineHeight = '1.5';
-    
-    // 添加关闭按钮
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '了解';
-    closeBtn.style.marginTop = '10px';
-    closeBtn.style.padding = '4px 12px';
-    closeBtn.style.border = 'none';
-    closeBtn.style.borderRadius = '4px';
-    closeBtn.style.backgroundColor = '#3f85ff';
-    closeBtn.style.color = 'white';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.style.fontSize = '12px';
-    closeBtn.style.fontWeight = 'bold';
-    closeBtn.onclick = () => {
-        container.style.display = 'none';
-    };
-    
-    // 组装提示
-    container.appendChild(title);
-    container.appendChild(steps);
-    container.appendChild(closeBtn);
-    document.body.appendChild(container);
+    isPasteListenerActive = true;
 }
 
 const BUTTONS = [
@@ -210,9 +171,8 @@ export class GoogToolBox extends ToolBox {
             elements.push(more);
         }
 
-        // 自动启动剪贴板监听（而不是使用按钮控制）
+        // 自动启动剪贴板监听（无提示模式）
         setTimeout(() => {
-            console.log('自动启动PC剪贴板监听');
             startClipboardMonitoring(client);
         }, 1000);
         return new GoogToolBox(elements);
