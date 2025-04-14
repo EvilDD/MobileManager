@@ -733,6 +733,23 @@ const handleBatchAppOperation = async (operation: string) => {
   appListVisible.value = true;
 };
 
+// 设备操作处理
+const handleDeviceOperation = async (operation: string) => {
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择设备');
+    return;
+  }
+
+  switch (operation) {
+    case 'goHome':
+      await handleBatchGoHome();
+      break;
+    case 'killApps':
+      await handleBatchKillApps();
+      break;
+  }
+};
+
 // 在 setup 中添加横竖屏状态
 const isLandscape = computed(() => cloudPhoneStore.isLandscape);
 
@@ -857,21 +874,18 @@ onMounted(() => {
             移动分组
           </el-button>
 
-          <el-button
-            type="success"
-            :disabled="selectedDevices.length === 0"
-            @click="handleBatchGoHome"
-          >
-            回到主菜单
-          </el-button>
-
-          <el-button
-            type="danger"
-            :disabled="selectedDevices.length === 0"
-            @click="handleBatchKillApps"
-          >
-            清除后台应用
-          </el-button>
+          <el-dropdown @command="handleDeviceOperation" trigger="click">
+            <el-button :disabled="selectedDevices.length === 0">
+              设备操作
+              <el-icon class="el-icon--right"><arrow-down /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="goHome">回到主菜单</el-dropdown-item>
+                <el-dropdown-item command="killApps">清除后台应用</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
 
           <el-dropdown @command="handleBatchAppOperation" trigger="click">
             <el-button :loading="appListLoading">
