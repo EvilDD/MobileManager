@@ -89,7 +89,7 @@ const handleConfirm = () => {
         <el-radio
           v-for="group in filteredGroups"
           :key="group.id"
-          :label="group.id"
+          :value="group.id"
           class="group-radio-item"
         >
           <div class="group-radio-content">
