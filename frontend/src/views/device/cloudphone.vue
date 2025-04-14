@@ -727,6 +727,12 @@ const handleAppSelected = async (app: App) => {
 
 // 批量应用操作
 const handleBatchAppOperation = async (operation: string) => {
+  // 检查是否有选中的设备
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择设备');
+    return;
+  }
+  
   // 保存当前操作类型
   currentOperation.value = operation;
   // 显示应用选择对话框
@@ -890,7 +896,7 @@ onMounted(() => {
           </el-dropdown>
 
           <el-dropdown @command="handleBatchAppOperation" trigger="click">
-            <el-button :loading="appListLoading">
+            <el-button :loading="appListLoading" :disabled="selectedDevices.length === 0">
               应用操作
               <el-icon class="el-icon--right"><arrow-down /></el-icon>
             </el-button>
