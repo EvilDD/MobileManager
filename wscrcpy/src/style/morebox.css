@@ -50,3 +50,9 @@
         min-width: 100px;
     }
 }
+
+/* 隐藏More按钮但保持其功能 */
+.control-button[for^="input_show_more_"] {
+  opacity: 0;
+  pointer-events: auto; /* 保持可点击 */
+}

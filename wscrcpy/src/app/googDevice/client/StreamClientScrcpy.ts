@@ -164,6 +164,20 @@ export class StreamClientScrcpy
     }
 
     public OnDeviceMessage = (message: DeviceMessage): void => {
+        // 无论moreBox是否存在，都直接处理剪贴板消息
+        if (message.type === DeviceMessage.TYPE_CLIPBOARD) {
+            const clipboardText = message.getText();
+            // 创建一个临时文本区域来复制剪贴板内容
+            const tempInput = document.createElement('textarea');
+            tempInput.value = clipboardText;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            console.log('已自动复制手机剪贴板内容:', clipboardText);
+        }
+        
+        // 仍然保留原有逻辑，转发给moreBox（如果存在）
         if (this.moreBox) {
             this.moreBox.OnDeviceMessage(message);
         }
