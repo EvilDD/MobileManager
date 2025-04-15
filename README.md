@@ -79,7 +79,10 @@ MobileManager 是一个强大的移动设备管理系统，基于 ADB (Android D
 ### 环境要求
 - Go 1.18+
 - Node.js 16+
-- ADB 工具
+- ADB 工具（必须安装并配置环境变量）
+- pnpm 包管理器
+
+> ⚠️ **注意**：本系统依赖 ADB (Android Debug Bridge) 环境，请确保在使用前已正确安装并配置 ADB，且可以在命令行中直接使用 `adb` 命令。
 
 ### 安装步骤
 
@@ -103,6 +106,15 @@ cd frontend
 pnpm install
 pnpm dev
 ```
+
+4. 串流服务（WebScrcpy）
+```bash
+cd wscrcpy
+pnpm install
+pnpm start
+```
+
+> 💡 **提示**：需要同时运行后端服务、前端服务和串流服务。建议在三个不同的终端窗口中分别启动各服务。
 
 ## 📚 功能列表
 
