@@ -295,8 +295,35 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
     public abstract getImageDataURL(): string;
 
     public createScreenshot(deviceName: string): void {
+        const imageUrl = this.getImageDataURL();
+        // 检查是否在iframe中
+        const isInIframe = window !== window.parent;
+        
+        if (isInIframe) {
+            try {
+                // 向父窗口发送截图数据
+                window.parent.postMessage({
+                    type: 'screenshot',
+                    data: {
+                        imageUrl,
+                        filename: `${deviceName} ${new Date().toLocaleString()}.png`
+                    }
+                }, '*');
+                console.log('截图数据已发送到父窗口');
+            } catch (e) {
+                console.error('向父窗口发送截图失败:', e);
+                // 降级处理：尝试在iframe内部下载
+                this.downloadScreenshot(imageUrl, deviceName);
+            }
+        } else {
+            // 直接在当前窗口下载
+            this.downloadScreenshot(imageUrl, deviceName);
+        }
+    }
+
+    private downloadScreenshot(imageUrl: string, deviceName: string): void {
         const a = document.createElement('a');
-        a.href = this.getImageDataURL();
+        a.href = imageUrl;
         a.download = `${deviceName} ${new Date().toLocaleString()}.png`;
         a.click();
     }

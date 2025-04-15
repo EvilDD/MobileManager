@@ -19,6 +19,7 @@
         class="device-stream"
         frameborder="0"
         allowfullscreen
+        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
       />
       <div v-else class="offline-message">
         <el-empty description="设备当前离线，无法显示控制界面" />
@@ -28,7 +29,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 
@@ -42,6 +43,29 @@ const deviceStatus = ref('offline');
 // 服务器URL配置 - 从环境变量读取
 const serverUrl = import.meta.env.VITE_WSCRCPY_SERVER || 'http://localhost:8000';
 const wsServerUrl = import.meta.env.VITE_WSCRCPY_WS_SERVER || 'ws://localhost:8000';
+
+// 处理来自iframe的消息
+const handleIframeMessage = (event) => {
+  const data = event.data;
+  if (data && data.type === 'screenshot' && data.data) {
+    console.log('收到截图数据，准备保存');
+    try {
+      // 创建下载链接
+      const a = document.createElement('a');
+      a.href = data.data.imageUrl;
+      a.download = data.data.filename || `设备截图_${new Date().toLocaleString()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+      }, 100);
+      ElMessage.success('截图已保存');
+    } catch (e) {
+      console.error('保存截图失败:', e);
+      ElMessage.error('截图保存失败: ' + e.message);
+    }
+  }
+};
 
 // 构建完整的串流URL
 const streamUrl = computed(() => {
@@ -78,6 +102,13 @@ const goBack = () => {
 
 onMounted(() => {
   getDeviceDetail();
+  // 添加消息事件监听器
+  window.addEventListener('message', handleIframeMessage);
+});
+
+onBeforeUnmount(() => {
+  // 移除消息事件监听器
+  window.removeEventListener('message', handleIframeMessage);
 });
 </script>
 

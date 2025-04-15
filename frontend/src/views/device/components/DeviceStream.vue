@@ -6,7 +6,7 @@
         class="device-stream-frame"
         :style="{ visibility: loading || error ? 'hidden' : 'visible' }"
         scrolling="no"
-        sandbox="allow-scripts allow-same-origin allow-forms"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
       />
     </div>
   </template>
@@ -366,6 +366,29 @@
               fullHeight: deviceHeight.value + STREAM_WINDOW_CONFIG.BUTTON.HEIGHT // 真实高度加按钮高度
             });
           }
+        }
+      }
+      
+      // 处理截图消息
+      else if (data.type === 'screenshot' && data.data) {
+        console.log('收到截图数据，准备保存');
+        try {
+          // 创建下载链接
+          const a = document.createElement('a');
+          a.href = data.data.imageUrl;
+          a.download = data.data.filename || `设备截图_${new Date().toLocaleString()}.png`;
+          document.body.appendChild(a); // 必须添加到DOM才能触发某些浏览器的下载
+          a.click(); // 触发下载
+          
+          // 下载开始后从DOM中移除
+          setTimeout(() => {
+            document.body.removeChild(a);
+          }, 100);
+          
+          ElMessage.success('截图已保存');
+        } catch (e) {
+          console.error('保存截图失败:', e);
+          ElMessage.error('截图保存失败: ' + e.message);
         }
       }
     }
