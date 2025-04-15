@@ -33,6 +33,7 @@ export interface Device {
   status: string;
   createdAt: string;
   updatedAt: string;
+  screenshot?: string; // 设备截图的base64数据
 }
 
 export interface GroupOption {

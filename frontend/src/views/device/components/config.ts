@@ -30,4 +30,17 @@ export const STREAM_WINDOW_CONFIG = {
     MAX_WIDTH: 1080,
     MAX_HEIGHT: 1920
   }
-} as const; 
+} as const;
+
+export const DEVICE_CONFIG = {
+  // 云机同步设备尺寸配置
+  SYNC: {
+    MAIN_DEVICE: {
+      WIDTH: 360,
+      HEIGHT: 720+82
+    }
+  }
+} as const;
+
+// 导出类型
+export type DeviceConfig = typeof DEVICE_CONFIG; 

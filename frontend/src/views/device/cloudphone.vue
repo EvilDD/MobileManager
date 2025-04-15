@@ -421,7 +421,7 @@ const isAllSelected = computed(() => {
   return filteredDevices.value.length > 0 && selectedDevices.value.length === filteredDevices.value.length;
 });
 
-// 选择设备
+// 修改选择设备的函数
 const handleSelect = (device: Device) => {
   const index = selectedDevices.value.findIndex(id => id === device.deviceId);
   if (index === -1) {
@@ -429,6 +429,9 @@ const handleSelect = (device: Device) => {
   } else {
     selectedDevices.value.splice(index, 1);
   }
+  
+  // 立即更新store中的选中设备
+  updateSelectedDevicesToStore();
 };
 
 // 全选/取消全选
@@ -438,6 +441,19 @@ const handleSelectAll = () => {
   } else {
     selectedDevices.value = filteredDevices.value.map(device => device.deviceId);
   }
+  
+  // 立即更新store中的选中设备
+  updateSelectedDevicesToStore();
+};
+
+// 更新存储
+const updateSelectedDevicesToStore = () => {
+  // 将选中的设备ID转换为设备对象数组
+  const selectedDeviceObjects = devices.value.filter(device => 
+    selectedDevices.value.includes(device.deviceId)
+  );
+  // 更新store
+  cloudPhoneStore.setSelectedDevices(selectedDeviceObjects);
 };
 
 // 批量切换分组
@@ -658,6 +674,8 @@ const stopTaskStatusPolling = () => {
 // 组件卸载时清理
 onUnmounted(() => {
   stopTaskStatusPolling();
+  // 不再自动清空选中的设备，保持选择状态
+  // 只有在明确的用户操作后才清空
 });
 
 // 修改 handleAppSelected 函数
@@ -762,6 +780,23 @@ const isLandscape = computed(() => cloudPhoneStore.isLandscape);
 // 切换横竖屏方向
 const toggleOrientation = () => {
   cloudPhoneStore.toggleOrientation();
+};
+
+// 跳转到同步页面
+const goToSync = () => {
+  if (selectedDevices.value.length === 0) {
+    ElMessage.warning('请先选择需要同步的设备');
+    return;
+  }
+  
+  // 先清空 store 中之前保存的设备列表，然后更新为当前选中的设备
+  cloudPhoneStore.clearSelectedDevices();
+  
+  // 更新当前选中的设备到 store
+  updateSelectedDevicesToStore();
+  
+  // 跳转到同步页面
+  router.push('/device/sync');
 };
 
 onMounted(() => {
@@ -927,6 +962,14 @@ onMounted(() => {
         </div>
         
         <div class="right-controls">
+          <el-button
+            type="primary"
+            :disabled="selectedDevices.length === 0"
+            @click="goToSync"
+          >
+            同步设备
+          </el-button>
+
           <el-button
             type="default"
             size="small"
