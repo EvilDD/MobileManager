@@ -477,15 +477,14 @@ const showMoveGroupDialog = ref(false);
 const selectedGroupId = ref<number>(0);
 
 // 确认移动分组
-const handleConfirmMoveGroup = async () => {
-  if (!selectedGroupId.value) {
+const handleConfirmMoveGroup = async (groupId: number) => {
+  if (!groupId) {
     ElMessage.warning('请选择目标分组');
     return;
   }
   
-  await handleBatchChangeGroup(selectedGroupId.value);
+  await handleBatchChangeGroup(groupId);
   showMoveGroupDialog.value = false;
-  selectedGroupId.value = 0;
 };
 
 // 批量回到主菜单
