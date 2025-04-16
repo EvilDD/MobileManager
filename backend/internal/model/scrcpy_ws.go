@@ -76,11 +76,22 @@ type ClickEvent struct {
 
 // VideoSettings 视频设置结构
 type VideoSettings struct {
-	Bitrate        int `json:"bitrate"`
-	MaxFps         int `json:"maxFps"`
-	IFrameInterval int `json:"iFrameInterval"`
-	Width          int `json:"width"`
-	Height         int `json:"height"`
+	Bitrate                int         `json:"bitrate"`
+	MaxFps                 int         `json:"maxFps"`
+	IFrameInterval         int         `json:"iFrameInterval"`
+	Bounds                 VideoBounds `json:"bounds"`
+	Crop                   interface{} `json:"crop"`
+	SendFrameMeta          bool        `json:"sendFrameMeta"`
+	LockedVideoOrientation int         `json:"lockedVideoOrientation"`
+	DisplayId              int         `json:"displayId"`
+	CodecOptions           interface{} `json:"codecOptions"`
+	EncoderName            interface{} `json:"encoderName"`
+}
+
+// VideoBounds 视频边界尺寸
+type VideoBounds struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // 视频流初始参数

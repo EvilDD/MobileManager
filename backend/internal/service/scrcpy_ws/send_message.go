@@ -29,10 +29,10 @@ func (s *ScrcpyService) sendVideoSettings(ctx context.Context, tcpConn net.Conn,
 	buffer[9] = byte(settings.IFrameInterval)
 
 	// 写入宽度 (2字节)
-	binary.BigEndian.PutUint16(buffer[10:12], uint16(settings.Width))
+	binary.BigEndian.PutUint16(buffer[10:12], uint16(settings.Bounds.Width))
 
 	// 写入高度 (2字节)
-	binary.BigEndian.PutUint16(buffer[12:14], uint16(settings.Height))
+	binary.BigEndian.PutUint16(buffer[12:14], uint16(settings.Bounds.Height))
 
 	// 写入裁剪区域 (8字节)
 	// left, top, right, bottom 都设为0
@@ -41,13 +41,17 @@ func (s *ScrcpyService) sendVideoSettings(ctx context.Context, tcpConn net.Conn,
 	}
 
 	// 写入是否发送帧元数据 (1字节)
-	buffer[22] = 0
+	if settings.SendFrameMeta {
+		buffer[22] = 1
+	} else {
+		buffer[22] = 0
+	}
 
 	// 写入锁定视频方向 (1字节)
-	buffer[23] = 0xFF // -1
+	buffer[23] = byte(settings.LockedVideoOrientation)
 
 	// 写入显示ID (4字节)
-	binary.BigEndian.PutUint32(buffer[24:28], 0)
+	binary.BigEndian.PutUint32(buffer[24:28], uint32(settings.DisplayId))
 
 	// 写入编解码器选项长度 (4字节)
 	binary.BigEndian.PutUint32(buffer[28:32], 0)
@@ -63,7 +67,12 @@ func (s *ScrcpyService) sendVideoSettings(ctx context.Context, tcpConn net.Conn,
 	}
 
 	deviceConn.VideoSettingsSent = true
-	glog.Info(ctx, "视频设置已发送", "比特率:", settings.Bitrate, "最大帧率:", settings.MaxFps, "分辨率:", settings.Width, "x", settings.Height)
+	glog.Info(ctx, "视频设置已发送",
+		"比特率:", settings.Bitrate,
+		"最大帧率:", settings.MaxFps,
+		"分辨率:", settings.Bounds.Width, "x", settings.Bounds.Height,
+		"锁定方向:", settings.LockedVideoOrientation,
+		"发送帧元数据:", settings.SendFrameMeta)
 }
 
 // sendTouchEvent 发送触摸事件

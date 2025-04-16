@@ -65,8 +65,8 @@ class ScrcpyClient:
         self.video_settings_sent = False  # 添加标志位，跟踪视频设置是否已发送
         
         # 触摸事件使用的尺寸（将在解析初始化信息后计算）
-        self.touch_screen_width = 0
-        self.touch_screen_height = 0
+        self.touch_screen_width = 464
+        self.touch_screen_height = 848
         
         # 视频解码器
         self.video_decoder = cv2.VideoCapture()
@@ -80,67 +80,6 @@ class ScrcpyClient:
     def to_hex_int(self, value):
         """将整数转换为十六进制整数值"""
         return int(self.to_hex(value), 16)
-    
-    def calculate_touch_screen_size(self):
-        """
-        计算触摸事件使用的屏幕尺寸
-        根据实际设备宽高比和视频设置尺寸计算触摸事件的正确尺寸
-        
-        计算规则:
-        1. 如果是横屏(宽>高)，以宽为主
-        2. 如果是竖屏(高>宽)，以高为主
-        3. 比例仍然按照真实解析出来的设备宽高比
-        4. 宽度和高度都调整为16的倍数，便于编码
-        5. 使用精确的缩放算法
-        """
-        # 验证设备尺寸是否有效
-        if self.screen_width <= 0 or self.screen_height <= 0:
-            # 无法计算宽高比，使用视频设置的尺寸
-            self.touch_screen_width = (self.VIDEO_SCREEN_WIDTH // 16) * 16
-            self.touch_screen_height = (self.VIDEO_SCREEN_HEIGHT // 16) * 16
-            print(f"警告：未获取到有效的设备尺寸，使用视频设置尺寸作为触摸尺寸")
-            return
-            
-        # 计算实际设备宽高比
-        device_ratio = self.screen_width / self.screen_height
-        print(f"设备宽高比: {device_ratio:.4f}")
-        
-        # 判断设备方向
-        is_landscape = self.screen_width > self.screen_height
-        print(f"设备方向: {'横屏' if is_landscape else '竖屏'}")
-        
-        # 目标尺寸
-        target_width = self.VIDEO_SCREEN_WIDTH
-        target_height = self.VIDEO_SCREEN_HEIGHT
-        
-        # 根据设备方向进行计算
-        if is_landscape:
-            # 横屏：以宽为主
-            scaled_height = int(target_width / device_ratio)
-            if scaled_height > target_height:
-                # 如果高度超出，则以高度为准
-                self.touch_screen_height = target_height
-                self.touch_screen_width = int(target_height * device_ratio)
-            else:
-                self.touch_screen_width = target_width
-                self.touch_screen_height = scaled_height
-        else:
-            # 竖屏：以高为主
-            scaled_width = int(target_height * device_ratio)
-            if scaled_width > target_width:
-                # 如果宽度超出，则以宽度为准
-                self.touch_screen_width = target_width
-                self.touch_screen_height = int(target_width / device_ratio)
-            else:
-                self.touch_screen_height = target_height
-                self.touch_screen_width = scaled_width
-            
-        # 调整为16的倍数，使用位运算确保精确性
-        self.touch_screen_width = self.touch_screen_width & ~15
-        self.touch_screen_height = self.touch_screen_height & ~15
-        
-        print(f"计算得到的触摸屏幕尺寸: {self.touch_screen_width}x{self.touch_screen_height}")
-        print(f"触摸屏幕尺寸(十六进制): 0x{self.to_hex(self.touch_screen_width)} x 0x{self.to_hex(self.touch_screen_height)}")
 
     async def connect(self):
         """连接到WebSocket服务器"""
@@ -170,7 +109,7 @@ class ScrcpyClient:
     
     async def _handle_binary_message(self, data):
         """处理二进制消息"""
-        print(f"收到二进制消息，长度: {len(data)} 字节")
+        # print(f"收到二进制消息，长度: {len(data)} 字节")
         
         # 检查是否是初始化消息
         if len(data) > len(self.MAGIC_BYTES_INITIAL) and data[:len(self.MAGIC_BYTES_INITIAL)] == self.MAGIC_BYTES_INITIAL:
@@ -295,11 +234,8 @@ class ScrcpyClient:
             print(f"编码器: {self.encoders}")
             print(f"客户端ID: {self.client_id}")
             
-            # 计算触摸屏幕尺寸
-            self.calculate_touch_screen_size()
-            
             # 在初始化信息处理完成后发送视频设置
-            await self.send_video_settings()
+            # await self.send_video_settings()
             
         except Exception as e:
             print(f"处理初始化信息时出错: {e}")
@@ -504,10 +440,6 @@ class ScrcpyClient:
         self.VIDEO_SCREEN_WIDTH = width
         self.VIDEO_SCREEN_HEIGHT = height
         print(f"视频屏幕尺寸已设置为: {width}x{height}")
-        
-        # 如果已有设备尺寸，重新计算触摸尺寸
-        if self.screen_width > 0 and self.screen_height > 0:
-            self.calculate_touch_screen_size()
             
         return width, height
 
@@ -624,7 +556,7 @@ class ScrcpyClient:
                 nal_type = nal_unit[4] & 0x1F
                 
                 # 打印 NAL 类型和大小
-                print(f"NAL类型: {nal_type}, 大小: {len(nal_unit)} 字节")
+                # print(f"NAL类型: {nal_type}, 大小: {len(nal_unit)} 字节")
                 
                 # 如果是 SPS，提取视频尺寸
                 if nal_type == 7:  # SPS
@@ -771,7 +703,7 @@ class ScrcpyClient:
 async def main():
     """主函数"""
     # 创建客户端实例
-    client = ScrcpyClient("ws://localhost:10001")
+    client = ScrcpyClient("ws://localhost:8000/?action=proxy-adb&remote=tcp%3A8886&udid=127.0.0.1%3A16480")
     
     try:
         # 连接服务器

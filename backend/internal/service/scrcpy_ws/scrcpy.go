@@ -39,10 +39,11 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 	glog.Info(ctx, "收到WebSocket连接请求", "设备ID:", udid, "端口:", port)
 
 	// 获取或创建消息发送锁
-	var sendMutex sync.Mutex
+	var sendMutex *sync.Mutex
 	if v, ok := s.sendMutex.Load(udid); ok {
-		sendMutex = v.(sync.Mutex)
+		sendMutex = v.(*sync.Mutex)
 	} else {
+		sendMutex = &sync.Mutex{}
 		s.sendMutex.Store(udid, sendMutex)
 	}
 
@@ -130,7 +131,7 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 	sendMutex.Unlock()
 
 	// 创建消息队列通道
-	msgQueue := make(chan []byte, 1000) // 使用带缓冲的通道存储消息
+	msgQueue := make(chan []byte, 5000) // 大幅增加到5000的缓冲区容量
 
 	// 创建通道用于同步goroutine
 	done := make(chan struct{})
@@ -189,14 +190,14 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 					}
 					return
 				}
-				glog.Debug(ctx, "转发到设备的消息大小:", len(message))
+				// glog.Debug(ctx, "转发到设备的消息大小:", len(message))
 			}
 		}
 	}()
 
 	// 从TCP连接接收消息并放入队列
 	go func() {
-		buffer := make([]byte, 32*1024) // 32KB的缓冲区
+		buffer := make([]byte, 256*1024) // 大幅增加到256KB的缓冲区
 		for {
 			// 从TCP连接读取数据
 			n, err := tcpConn.Read(buffer)
@@ -250,15 +251,25 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 			case msgQueue <- received:
 				// 消息成功加入队列
 			default:
-				// 队列已满，可能导致消息丢失，这里记录警告但仍然尝试处理此消息
-				glog.Warning(ctx, "消息队列已满，可能会导致消息丢失")
-				// 尝试丢弃一个旧消息并加入新消息
+				// 队列已满时，直接丢弃旧消息并优先加入新消息，保证视频帧的实时性
+				// 一次性尝试丢弃多个旧消息
+				for i := 0; i < 5; i++ {
+					select {
+					case <-msgQueue: // 尝试丢弃旧消息
+						// 成功丢弃一个，继续循环
+					default:
+						// 没有更多消息可丢弃，跳出循环
+						i = 5
+					}
+				}
+
+				// 再次尝试加入队列
 				select {
-				case <-msgQueue: // 丢弃最旧的消息
-					msgQueue <- received
+				case msgQueue <- received:
+					// 成功加入队列
 				default:
-					// 如果无法丢弃，记录错误但不中断连接
-					glog.Error(ctx, "无法处理更多消息")
+					// 如果依然失败，记录警告
+					glog.Warning(ctx, "消息队列负载过高，丢弃视频帧")
 				}
 			}
 		}
@@ -266,22 +277,55 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 
 	// 处理消息队列，有序地发送到WebSocket
 	go func() {
+		// 批量处理标志
+		batchSize := 15                             // 每批处理的最大消息数
+		batchBuffer := make([][]byte, 0, batchSize) // 临时存储批量消息
+
 		for {
 			select {
 			case data := <-msgQueue:
-				// 处理特殊消息类型
-				isSpecial := s.handleSpecialMessages(ctx, wsConn, deviceConn, data)
+				// 清空批处理缓冲区
+				batchBuffer = batchBuffer[:0]
 
-				// 如果不是特殊消息或特殊消息需要转发，则转发到WebSocket
-				if !isSpecial {
-					sendMutex.Lock()
-					err := wsConn.WriteMessage(websocket.BinaryMessage, data)
-					sendMutex.Unlock()
-					if err != nil {
-						glog.Error(ctx, "向WebSocket写入数据失败:", err)
-						return
+				// 将当前消息添加到批处理缓冲区
+				batchBuffer = append(batchBuffer, data)
+
+				// 尝试从队列中读取更多消息进行批处理
+				batchCount := 1
+			drainLoop:
+				for batchCount < batchSize {
+					select {
+					case msg := <-msgQueue:
+						batchBuffer = append(batchBuffer, msg)
+						batchCount++
+					default:
+						// 队列为空，退出循环
+						break drainLoop
 					}
 				}
+
+				// 批量处理消息
+				for _, frameData := range batchBuffer {
+					// 处理特殊消息类型
+					isSpecial := s.handleSpecialMessages(ctx, wsConn, deviceConn, frameData)
+
+					// 如果不是特殊消息，则转发到WebSocket
+					if !isSpecial {
+						sendMutex.Lock()
+						err := wsConn.WriteMessage(websocket.BinaryMessage, frameData)
+						sendMutex.Unlock()
+
+						if err != nil {
+							if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+								glog.Debug(ctx, "WebSocket连接已正常关闭")
+							} else {
+								glog.Error(ctx, "向WebSocket写入数据失败:", err)
+							}
+							return
+						}
+					}
+				}
+
 			case <-done:
 				return
 			}
@@ -397,28 +441,82 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		// 处理视频设置
 		var videoSettings model.VideoSettings
 		if data, ok := command["data"].(map[string]interface{}); ok {
-			// 检查各字段是否存在
+			// 检查必要字段
 			bitrateVal, bitrateOk := data["bitrate"].(float64)
 			maxFpsVal, maxFpsOk := data["maxFps"].(float64)
 			iFrameIntervalVal, iFrameIntervalOk := data["iFrameInterval"].(float64)
-			widthVal, widthOk := data["width"].(float64)
-			heightVal, heightOk := data["height"].(float64)
 
-			if !bitrateOk || !maxFpsOk || !iFrameIntervalOk || !widthOk || !heightOk {
+			// 检查bounds字段
+			var boundsWidth, boundsHeight int
+			if bounds, boundsOk := data["bounds"].(map[string]interface{}); boundsOk {
+				if widthVal, widthOk := bounds["width"].(float64); widthOk {
+					boundsWidth = int(widthVal)
+				} else {
+					boundsWidth = model.WIDTH // 默认宽度
+				}
+
+				if heightVal, heightOk := bounds["height"].(float64); heightOk {
+					boundsHeight = int(heightVal)
+				} else {
+					boundsHeight = model.HEIGHT // 默认高度
+				}
+			} else {
+				// 如果没有bounds字段，尝试使用旧版格式
+				if widthVal, widthOk := data["width"].(float64); widthOk {
+					boundsWidth = int(widthVal)
+				} else {
+					boundsWidth = model.WIDTH
+				}
+
+				if heightVal, heightOk := data["height"].(float64); heightOk {
+					boundsHeight = int(heightVal)
+				} else {
+					boundsHeight = model.HEIGHT
+				}
+			}
+
+			// 检查其他可选字段
+			sendFrameMetaVal, _ := data["sendFrameMeta"].(bool)
+			lockedVideoOrientationVal, lockedOk := data["lockedVideoOrientation"].(float64)
+			displayIdVal, displayIdOk := data["displayId"].(float64)
+
+			// 验证必要字段
+			if !bitrateOk || !maxFpsOk || !iFrameIntervalOk {
 				glog.Error(ctx, "视频设置缺少必要字段或字段类型错误",
 					"bitrate存在:", bitrateOk,
 					"maxFps存在:", maxFpsOk,
-					"iFrameInterval存在:", iFrameIntervalOk,
-					"width存在:", widthOk,
-					"height存在:", heightOk)
+					"iFrameInterval存在:", iFrameIntervalOk)
 				return
 			}
 
+			// 设置视频参数
 			videoSettings.Bitrate = int(bitrateVal)
 			videoSettings.MaxFps = int(maxFpsVal)
 			videoSettings.IFrameInterval = int(iFrameIntervalVal)
-			videoSettings.Width = int(widthVal)
-			videoSettings.Height = int(heightVal)
+			videoSettings.Bounds = model.VideoBounds{
+				Width:  boundsWidth,
+				Height: boundsHeight,
+			}
+			videoSettings.SendFrameMeta = sendFrameMetaVal
+
+			if lockedOk {
+				videoSettings.LockedVideoOrientation = int(lockedVideoOrientationVal)
+			} else {
+				videoSettings.LockedVideoOrientation = -1 // 默认为-1
+			}
+
+			if displayIdOk {
+				videoSettings.DisplayId = int(displayIdVal)
+			} else {
+				videoSettings.DisplayId = 0 // 默认为0
+			}
+
+			// 设置为null的字段
+			videoSettings.Crop = nil
+			videoSettings.CodecOptions = nil
+			videoSettings.EncoderName = nil
+
+			// 发送视频设置
 			s.sendVideoSettings(ctx, tcpConn, deviceConn, videoSettings)
 		}
 	default:
@@ -434,13 +532,15 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 	// 检查是否是初始化消息
 	if len(data) > len(model.MAGIC_BYTES_INITIAL) && strings.HasPrefix(string(data), model.MAGIC_BYTES_INITIAL) {
 		s.handleInitialInfo(ctx, wsConn, deviceConn, data)
-		isSpecialMessage = false
+		isSpecialMessage = false // 确保初始化消息被转发
+		return isSpecialMessage
 	}
 
 	// 检查是否是设备消息
 	if len(data) > len(model.MAGIC_BYTES_MESSAGE) && strings.HasPrefix(string(data), model.MAGIC_BYTES_MESSAGE) {
 		s.handleDeviceMessage(ctx, wsConn, deviceConn, data)
-		isSpecialMessage = false
+		isSpecialMessage = false // 确保设备消息被转发
+		return isSpecialMessage
 	}
 
 	// 检查是否是 SPS 数据
@@ -481,47 +581,47 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 				width = uint(float64(width) * float64(spsInfo.Sar[0]) / float64(spsInfo.Sar[1]))
 			}
 
-			// 更新设备连接的视频尺寸
-			deviceConn.VideoWidth = int(width)
-			deviceConn.VideoHeight = int(height)
+			// 仅当尺寸有变化时才更新
+			if int(width) != deviceConn.VideoWidth || int(height) != deviceConn.VideoHeight {
+				// 更新设备连接的视频尺寸
+				deviceConn.VideoWidth = int(width)
+				deviceConn.VideoHeight = int(height)
 
-			// 构建编解码器字符串
-			codec := fmt.Sprintf("avc1.%02X%02X%02X",
-				spsInfo.ProfileIdc,
-				spsInfo.ConstraintSetFlags,
-				spsInfo.LevelIdc)
+				// 构建编解码器字符串
+				codec := fmt.Sprintf("avc1.%02X%02X%02X",
+					spsInfo.ProfileIdc,
+					spsInfo.ConstraintSetFlags,
+					spsInfo.LevelIdc)
 
-			glog.Info(ctx, "从视频帧解析到实际编码尺寸",
-				"原尺寸", fmt.Sprintf("%d x %d", originalWidth, originalHeight),
-				"新尺寸", fmt.Sprintf("%d x %d", deviceConn.VideoWidth, deviceConn.VideoHeight),
-				"编解码器", codec)
+				glog.Info(ctx, "从视频帧解析到实际编码尺寸",
+					"原尺寸", fmt.Sprintf("%d x %d", originalWidth, originalHeight),
+					"新尺寸", fmt.Sprintf("%d x %d", deviceConn.VideoWidth, deviceConn.VideoHeight),
+					"编解码器", codec)
 
-			// 向客户端发送视频尺寸更新消息
-			sizeUpdateMsg := map[string]interface{}{
-				"type": "videoSize",
-				"data": map[string]interface{}{
-					"width":  width,
-					"height": height,
-					"codec":  codec,
-				},
+				// 向客户端发送视频尺寸更新消息
+				sizeUpdateMsg := map[string]interface{}{
+					"type": "videoSize",
+					"data": map[string]interface{}{
+						"width":  width,
+						"height": height,
+						"codec":  codec,
+					},
+				}
+				msgJSON, _ := json.Marshal(sizeUpdateMsg)
+
+				sendMutex, _ := s.sendMutex.Load(deviceConn.UdId)
+				if sendMutex != nil {
+					mutex := sendMutex.(*sync.Mutex)
+					mutex.Lock()
+					wsConn.WriteMessage(websocket.TextMessage, msgJSON)
+					mutex.Unlock()
+				}
 			}
-			msgJSON, _ := json.Marshal(sizeUpdateMsg)
-			wsConn.WriteMessage(websocket.TextMessage, msgJSON)
-
-			// 重要变更：不返回true，以确保SPS帧也能被转发
-			isSpecialMessage = false
 		}
-
-		// // 也可以添加对PPS帧的识别和处理，但不拦截
-		// if nalType == 8 { // NAL type 8 表示 PPS
-		// 	glog.Debug(ctx, "检测到PPS帧，确保转发")
-		// 	// 不做特殊处理，只是记录日志
-		// 	isSpecialMessage = false
-		// }
 	}
 
-	// 返回false，表示即使处理了特殊消息，也应该继续原始转发
-	return isSpecialMessage
+	// 始终返回false，确保所有帧都被转发
+	return false
 }
 
 // handleInitialInfo 处理初始化信息
@@ -569,8 +669,16 @@ func (s *ScrcpyService) handleInitialInfo(ctx context.Context, wsConn *websocket
 			Bitrate:        model.BITRATE,
 			MaxFps:         model.MAX_FPS,
 			IFrameInterval: model.I_FRAME_INTERVAL,
-			Width:          model.WIDTH,
-			Height:         model.HEIGHT,
+			Bounds: model.VideoBounds{
+				Width:  model.WIDTH,
+				Height: model.HEIGHT,
+			},
+			SendFrameMeta:          false,
+			LockedVideoOrientation: -1,
+			DisplayId:              0,
+			Crop:                   nil,
+			CodecOptions:           nil,
+			EncoderName:            nil,
 		})
 	}
 }
@@ -694,6 +802,7 @@ type WebSocketAdapter struct {
 	readBuffer []byte
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
+	writeBuf   []byte // 写缓冲区
 }
 
 // Read 实现io.Reader接口
@@ -735,10 +844,41 @@ func (a *WebSocketAdapter) Write(b []byte) (n int, err error) {
 	a.writeMutex.Lock()
 	defer a.writeMutex.Unlock()
 
-	// 发送二进制消息
-	err = a.conn.WriteMessage(websocket.BinaryMessage, b)
-	if err != nil {
-		return 0, err
+	// 对于较大的数据块，直接发送
+	if len(b) > 4096 {
+		err = a.conn.WriteMessage(websocket.BinaryMessage, b)
+		if err != nil {
+			return 0, err
+		}
+		return len(b), nil
+	}
+
+	// 如果写缓冲区未初始化，创建它
+	if a.writeBuf == nil {
+		a.writeBuf = make([]byte, 0, 8192) // 8KB写缓冲区
+	}
+
+	// 如果当前数据加入缓冲区会导致溢出，先发送缓冲区内容
+	if len(a.writeBuf)+len(b) > cap(a.writeBuf) {
+		if len(a.writeBuf) > 0 {
+			err = a.conn.WriteMessage(websocket.BinaryMessage, a.writeBuf)
+			if err != nil {
+				return 0, err
+			}
+			a.writeBuf = a.writeBuf[:0] // 清空缓冲区但保留容量
+		}
+	}
+
+	// 将数据追加到缓冲区
+	a.writeBuf = append(a.writeBuf, b...)
+
+	// 如果缓冲区已经达到一定大小，立即发送
+	if len(a.writeBuf) > 4096 {
+		err = a.conn.WriteMessage(websocket.BinaryMessage, a.writeBuf)
+		if err != nil {
+			return 0, err
+		}
+		a.writeBuf = a.writeBuf[:0] // 清空缓冲区但保留容量
 	}
 
 	return len(b), nil
@@ -746,6 +886,16 @@ func (a *WebSocketAdapter) Write(b []byte) (n int, err error) {
 
 // Close 实现io.Closer接口
 func (a *WebSocketAdapter) Close() error {
+	a.writeMutex.Lock()
+	defer a.writeMutex.Unlock()
+
+	// 如果有未发送的数据，尝试发送
+	if len(a.writeBuf) > 0 {
+		// 忽略错误，因为我们即将关闭连接
+		_ = a.conn.WriteMessage(websocket.BinaryMessage, a.writeBuf)
+		a.writeBuf = nil
+	}
+
 	return a.conn.Close()
 }
 
