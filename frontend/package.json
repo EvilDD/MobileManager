@@ -54,6 +54,7 @@
     "dayjs": "^1.11.13",
     "echarts": "^5.5.1",
     "element-plus": "^2.9.0",
+    "h264-converter": "^0.1.4",
     "js-cookie": "^3.0.5",
     "localforage": "^1.10.0",
     "mitt": "^3.0.1",

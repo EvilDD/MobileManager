@@ -14,6 +14,7 @@ import (
 	"backend/internal/controller/hello"
 	"backend/internal/controller/scrcpy"
 	"backend/internal/controller/screenshot"
+	"backend/internal/controller/websocket"
 )
 
 var (
@@ -48,6 +49,9 @@ var (
 					app.NewV1(),
 				)
 			})
+
+			// 注册WebSocket路由
+			s.BindHandler("/ws/scrcpy", websocket.NewScrcpyController().Handler)
 
 			s.Run()
 			return nil

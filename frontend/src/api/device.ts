@@ -194,4 +194,32 @@ export function batchKillApps(deviceIds: string[]) {
     "/api/devices/batch-kill-apps",
     { data: { deviceIds } }
   );
+}
+
+/** 串流响应结构 */
+export interface StreamResponse {
+  code: number;
+  message: string;
+  data: {
+    port: number;
+    url: string;
+  };
+}
+
+/** 开始设备串流 */
+export function startDeviceStream(deviceId: string) {
+  return http.request<StreamResponse>(
+    "post",
+    "/api/stream/start",
+    { data: { deviceId } }
+  );
+}
+
+/** 停止设备串流 */
+export function stopDeviceStream(deviceId: string) {
+  return http.request<{ code: number; message: string; data: Record<string, unknown> }>(
+    "post",
+    "/api/stream/stop",
+    { data: { deviceId } }
+  );
 } 
