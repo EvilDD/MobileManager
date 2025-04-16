@@ -200,7 +200,7 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 
 	// 从TCP连接接收消息并放入队列
 	go func() {
-		buffer := make([]byte, 64*1024) // 增大到64KB的缓冲区
+		buffer := make([]byte, 256*1024) // 增大到64KB的缓冲区
 		for {
 			// 从TCP连接读取数据
 			n, err := tcpConn.Read(buffer)
@@ -359,10 +359,10 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 			}
 
 			// 处理特殊消息类型
-			isSpecial := s.handleSpecialMessages(ctx, wsConn, deviceConn, data)
+			isSpecialMessage := s.handleSpecialMessages(ctx, wsConn, deviceConn, data)
 
 			// 如果不是特殊消息或特殊消息需要转发，则转发到WebSocket
-			if !isSpecial {
+			if !isSpecialMessage {
 				sendMutex.Lock()
 				err := wsConn.WriteMessage(websocket.BinaryMessage, data)
 				sendMutex.Unlock()
@@ -383,8 +383,8 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 				select {
 				case keyFrameData := <-keyFrameQueue:
 					// 处理关键帧
-					isSpecial := s.handleSpecialMessages(ctx, wsConn, deviceConn, keyFrameData)
-					if !isSpecial {
+					isSpecialMessage := s.handleSpecialMessages(ctx, wsConn, deviceConn, keyFrameData)
+					if !isSpecialMessage {
 						sendMutex.Lock()
 						err := wsConn.WriteMessage(websocket.BinaryMessage, keyFrameData)
 						sendMutex.Unlock()
@@ -397,8 +397,8 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 					// 无关键帧，处理普通帧
 					select {
 					case normalData := <-msgQueue:
-						isSpecial := s.handleSpecialMessages(ctx, wsConn, deviceConn, normalData)
-						if !isSpecial {
+						isSpecialMessage := s.handleSpecialMessages(ctx, wsConn, deviceConn, normalData)
+						if !isSpecialMessage {
 							sendMutex.Lock()
 							err := wsConn.WriteMessage(websocket.BinaryMessage, normalData)
 							sendMutex.Unlock()
