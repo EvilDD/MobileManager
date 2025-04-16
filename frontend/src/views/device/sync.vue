@@ -1,19 +1,5 @@
 <template>
   <div class="sync-container">
-    <!-- 设备同步状态悬浮提示 -->
-    <div class="sync-status" v-if="isSyncing">
-      <el-progress 
-        type="circle" 
-        :percentage="syncProgress" 
-        :status="syncProgress === 100 ? 'success' : ''"
-        :stroke-width="6"
-      />
-      <div class="sync-message">{{ syncStatusMessage }}</div>
-    </div>
-
-    <!-- 添加同步控制按钮 -->
-    
-
     <div class="devices-grid">
       <!-- 主设备 -->
       <div class="device-card main-device" v-if="mainDevice">
@@ -21,18 +7,22 @@
           <span class="device-name">{{ mainDevice.name }}</span>
         </div>
         <div class="device-screen">
-          <el-image 
-            :src="mainDevice.screenshot || '/placeholder-device.png'" 
-            fit="contain"
-            :lazy="false"
-          >
-            <template #error>
-              <div class="image-error">
-                <el-icon><WarningFilled /></el-icon>
-                <span>无法加载设备画面</span>
-              </div>
-            </template>
-          </el-image>
+          <device-screenshot
+            v-if="mainDevice.status === 'online'"
+            :device-id="mainDevice.deviceId"
+            :auto-capture="true"
+            :quality="80"
+            :auto-refresh="autoRefresh"
+            :refresh-interval="refreshInterval"
+            @screenshot-ready="(imageData) => handleScreenshotReady(mainDevice.deviceId, imageData)"
+            @screenshot-error="(err) => handleScreenshotError(mainDevice.deviceId, err)"
+          />
+          <div v-else class="offline-placeholder">
+            <div class="image-error">
+              <el-icon><WarningFilled /></el-icon>
+              <span>设备离线</span>
+            </div>
+          </div>
         </div>
         <div class="device-info">
           <div class="device-id">ID: {{ mainDevice.deviceId }}</div>
@@ -52,37 +42,26 @@
         v-for="device in otherDevices" 
         :key="device.deviceId" 
         class="device-card other-device"
-        :class="{ 'sync-success': device.syncStatus === 'success', 'sync-error': device.syncStatus === 'error' }"
       >
         <div class="device-header">
           <span class="device-name">{{ device.name }}</span>
         </div>
         <div class="device-screen">
-          <el-image 
-            :src="device.screenshot || '/placeholder-device.png'" 
-            fit="contain"
-            :lazy="false"
-          >
-            <template #error>
-              <div class="image-error">
-                <el-icon><WarningFilled /></el-icon>
-                <span>无法加载设备画面</span>
-              </div>
-            </template>
-          </el-image>
-          
-          <!-- 同步覆盖层 -->
-          <div class="sync-overlay" v-if="device.syncStatus === 'syncing'">
-            <el-icon class="sync-icon"><Loading /></el-icon>
-            <span>正在同步...</span>
-          </div>
-          <div class="sync-overlay success" v-else-if="device.syncStatus === 'success'">
-            <el-icon class="sync-icon"><SuccessFilled /></el-icon>
-            <span>同步成功</span>
-          </div>
-          <div class="sync-overlay error" v-else-if="device.syncStatus === 'error'">
-            <el-icon class="sync-icon"><CircleCloseFilled /></el-icon>
-            <span>同步失败</span>
+          <device-screenshot
+            v-if="device.status === 'online'"
+            :device-id="device.deviceId"
+            :auto-capture="true"
+            :quality="80"
+            :auto-refresh="autoRefresh"
+            :refresh-interval="refreshInterval"
+            @screenshot-ready="(imageData) => handleScreenshotReady(device.deviceId, imageData)"
+            @screenshot-error="(err) => handleScreenshotError(device.deviceId, err)"
+          />
+          <div v-else class="offline-placeholder">
+            <div class="image-error">
+              <el-icon><WarningFilled /></el-icon>
+              <span>设备离线</span>
+            </div>
           </div>
         </div>
         <div class="device-info">
@@ -105,32 +84,20 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { 
-  WarningFilled, 
-  Loading, 
-  SuccessFilled, 
-  CircleCloseFilled 
-} from '@element-plus/icons-vue';
-import { DEVICE_CONFIG } from './components/config';
+import { WarningFilled } from '@element-plus/icons-vue';
 import { useCloudPhoneStore } from '@/store/modules/cloudphone';
 import type { Device } from '@/api/device';
+import DeviceScreenshot from './components/DeviceScreenshot.vue';
+import { DEVICE_CONFIG } from './components/config';
 
 interface SyncDevice extends Device {
   isMainDevice?: boolean;
-  syncStatus?: 'waiting' | 'syncing' | 'success' | 'error';
-  lastSyncTime?: string;
   screenshot?: string;
 }
 
 const router = useRouter();
 const route = useRoute();
 const store = useCloudPhoneStore();
-
-// 同步状态
-const syncLoading = ref(false);
-const isSyncing = ref(false);
-const syncProgress = ref(0);
-const syncStatusMessage = ref('准备同步设备...');
 
 // 设备数据
 const deviceList = ref<SyncDevice[]>([]);
@@ -139,113 +106,24 @@ const deviceList = ref<SyncDevice[]>([]);
 const mainDevice = computed(() => deviceList.value.find(device => device.isMainDevice));
 const otherDevices = computed(() => deviceList.value.filter(device => !device.isMainDevice));
 
-// 停止同步操作
-const stopSync = () => {
-  if (!isSyncing.value) return;
-  
-  // 停止同步操作
-  syncLoading.value = false;
-  isSyncing.value = false;
-  syncProgress.value = 0;
-  syncStatusMessage.value = '同步已停止';
-  
-  // 更新所有从设备的同步状态
-  otherDevices.value.forEach(device => {
-    if (device.syncStatus === 'syncing') {
-      device.syncStatus = 'waiting';
-    }
-  });
-  
-  ElMessage.info('同步操作已停止');
+// 截图相关
+const autoRefresh = ref(true);
+const refreshInterval = ref(5000); // 默认5秒刷新一次
+const screenshotStatus = ref<Record<string, { success: boolean; error?: string }>>({});
+
+// 处理截图事件
+const handleScreenshotReady = (deviceId: string, imageData: string) => {
+  screenshotStatus.value[deviceId] = { success: true };
+  // 更新设备截图
+  const device = deviceList.value.find(d => d.deviceId === deviceId);
+  if (device) {
+    device.screenshot = imageData;
+  }
 };
 
-// 开始同步操作
-const startSync = async () => {
-  if (deviceList.value.length <= 1) {
-    ElMessage.warning('至少需要两台设备才能进行同步操作');
-    return;
-  }
-
-  if (!mainDevice.value) {
-    ElMessage.warning('缺少主设备，无法进行同步');
-    return;
-  }
-  
-  if (mainDevice.value.status !== 'online') {
-    ElMessage.warning('主设备不在线，无法进行同步');
-    return;
-  }
-
-  // 同步状态初始化
-  syncLoading.value = true;
-  isSyncing.value = true;
-  syncProgress.value = 0;
-  syncStatusMessage.value = '正在准备同步...';
-  
-  // 更新所有从设备的同步状态为"syncing"
-  otherDevices.value.forEach(device => {
-    device.syncStatus = 'syncing';
-  });
-
-  try {
-    // 模拟同步进度
-    const updateProgress = async () => {
-      for (let i = 0; i <= 100; i += 5) {
-        // 如果同步被停止，退出循环
-        if (!isSyncing.value) {
-          break;
-        }
-        
-        syncProgress.value = i;
-        
-        if (i === 30) {
-          syncStatusMessage.value = '正在同步应用数据...';
-        } else if (i === 60) {
-          syncStatusMessage.value = '正在同步系统设置...';
-        } else if (i === 90) {
-          syncStatusMessage.value = '正在完成同步操作...';
-        }
-        
-        // 随机设置部分设备同步完成
-        if (i >= 40 && i % 20 === 0) {
-          const randomDeviceIndex = Math.floor(Math.random() * otherDevices.value.length);
-          const randomStatus = Math.random() > 0.8 ? 'error' : 'success';
-          if (otherDevices.value[randomDeviceIndex].syncStatus === 'syncing') {
-            otherDevices.value[randomDeviceIndex].syncStatus = randomStatus;
-          }
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-      
-      // 所有同步完成
-      if (isSyncing.value) {
-        otherDevices.value.forEach(device => {
-          if (device.syncStatus === 'syncing') {
-            device.syncStatus = 'success';
-          }
-          // 更新同步时间
-          device.lastSyncTime = new Date().toLocaleString();
-        });
-        
-        syncStatusMessage.value = '同步完成！';
-        syncLoading.value = false;
-        
-        // 5秒后隐藏同步状态
-        setTimeout(() => {
-          isSyncing.value = false;
-        }, 5000);
-      }
-    };
-    
-    await updateProgress();
-    
-  } catch (error) {
-    console.error('同步过程中发生错误:', error);
-    ElMessage.error('同步过程中发生错误');
-    syncLoading.value = false;
-    isSyncing.value = false;
-  }
+const handleScreenshotError = (deviceId: string, error: string) => {
+  screenshotStatus.value[deviceId] = { success: false, error };
+  console.error(`设备 ${deviceId} 截图加载失败:`, error);
 };
 
 // 初始化数据
@@ -263,14 +141,8 @@ onMounted(() => {
   deviceList.value = selectedDevices.map((device, index) => ({
     ...device,
     isMainDevice: index === 0,
-    syncStatus: index === 0 ? undefined : 'waiting',
     screenshot: device.screenshot || 'https://via.placeholder.com/300x600'
   }));
-  
-  // 如果设备数量大于1，建议用户开始同步
-  if (deviceList.value.length > 1) {
-    ElMessage.success(`已加载 ${deviceList.value.length} 台设备，请点击开关开始同步`);
-  }
 });
 
 // 监听路由变化,如果没有选中设备则返回分组手机页面
@@ -294,41 +166,15 @@ watch(
   padding: 20px;
 }
 
-.sync-status {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 8px;
-  padding: 15px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  transition: all 0.3s ease;
-}
-
-.sync-message {
-  margin-top: 10px;
-  font-size: 14px;
-  color: #409eff;
-}
-
-/* 添加同步控制按钮样式 */
-.sync-controls {
-  display: none; /* 隐藏同步控制按钮 */
-}
-
 .devices-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, v-bind('(DEVICE_CONFIG.SYNC.MAIN_DEVICE.WIDTH / 2) + "px"'));
   gap: 20px;
   justify-content: start;
   align-content: start;
-  height: 100%;
+  height: calc(100vh - 40px);
   overflow-y: auto;
-  padding: 20px;
+  padding: 10px;
 }
 
 .device-card {
@@ -340,6 +186,7 @@ watch(
   overflow: hidden;
   transition: all 0.3s ease;
   position: relative;
+  height: 100%;
 }
 
 .device-card:hover {
@@ -385,10 +232,34 @@ watch(
   background-color: #000;
 }
 
-.device-screen .el-image {
+/* 设备截图样式 */
+.main-device .device-screen {
+  height: calc(100% - 80px); /* 减去header和info的高度 */
+}
+
+.other-device .device-screen {
+  height: calc(100% - 74px); /* 减去header和info的高度 */
+}
+
+.device-screen :deep(.device-screenshot-container) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.device-screen :deep(.screenshot-image) {
+  width: 100%;
   height: 100%;
-  max-width: 100%;
   object-fit: contain;
+  max-height: 100%;
+}
+
+.offline-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #1a1a1a;
 }
 
 .image-error {
@@ -415,38 +286,19 @@ watch(
   color: #606266;
 }
 
-.sync-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  color: white;
-  gap: 10px;
-}
-
-.sync-overlay.success {
-  background-color: rgba(103, 194, 58, 0.7);
-}
-
-.sync-overlay.error {
-  background-color: rgba(245, 108, 108, 0.7);
-}
-
-.sync-icon {
-  font-size: 32px;
-}
-
-.sync-success {
-  border: 2px solid #67c23a;
-}
-
-.sync-error {
-  border: 2px solid #f56c6c;
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .devices-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .main-device {
+    grid-column: span 1;
+    height: 500px;
+  }
+  
+  .other-device {
+    height: 280px;
+  }
 }
 </style> 

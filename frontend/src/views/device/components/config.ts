@@ -37,7 +37,7 @@ export const DEVICE_CONFIG = {
   SYNC: {
     MAIN_DEVICE: {
       WIDTH: 360,
-      HEIGHT: 720+82
+      HEIGHT: 640+82
     }
   }
 } as const;
