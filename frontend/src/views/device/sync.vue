@@ -5,10 +5,22 @@
       <div class="device-card main-device" v-if="mainDevice">
         <div class="device-header">
           <span class="device-name">{{ mainDevice.name }}</span>
+          <div class="actions">
+            <el-switch
+              v-model="streamEnabled"
+              active-text="实时串流"
+              @change="toggleStream"
+              :disabled="streamLoading"
+            />
+          </div>
         </div>
         <div class="device-screen">
+          <!-- 视频流播放器 -->
+          <div v-if="streamEnabled && !streamError" ref="playerContainer" class="player-container" />
+          
+          <!-- 截图模式 -->
           <device-screenshot
-            v-if="mainDevice.status === 'online'"
+            v-if="!streamEnabled && mainDevice.status === 'online'"
             :device-id="mainDevice.deviceId"
             :auto-capture="true"
             :quality="80"
@@ -17,7 +29,17 @@
             @screenshot-ready="(imageData) => handleScreenshotReady(mainDevice.deviceId, imageData)"
             @screenshot-error="(err) => handleScreenshotError(mainDevice.deviceId, err)"
           />
-          <div v-else class="offline-placeholder">
+          
+          <!-- 错误状态 -->
+          <div v-if="streamError" class="stream-error">
+            <el-icon><WarningFilled /></el-icon>
+            <span>{{ streamError }}</span>
+            <el-button size="small" type="primary" @click="toggleStream(true)" class="retry-button">
+              重试
+            </el-button>
+          </div>
+          
+          <div v-if="!streamEnabled && mainDevice.status !== 'online'" class="offline-placeholder">
             <div class="image-error">
               <el-icon><WarningFilled /></el-icon>
               <span>设备离线</span>
@@ -81,14 +103,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { WarningFilled } from '@element-plus/icons-vue';
 import { useCloudPhoneStore } from '@/store/modules/cloudphone';
 import type { Device } from '@/api/device';
+import { startDeviceStream, stopDeviceStream } from '@/api/device';
 import DeviceScreenshot from './components/DeviceScreenshot.vue';
 import { DEVICE_CONFIG } from './components/config';
+
+// 导入视频播放器
+import { WebCodecsPlayer } from './player/WebCodecsPlayer';
+import Size from './Size';
+import { DisplayInfo } from './DisplayInfo';
 
 interface SyncDevice extends Device {
   isMainDevice?: boolean;
@@ -111,6 +139,14 @@ const autoRefresh = ref(true);
 const refreshInterval = ref(5000); // 默认5秒刷新一次
 const screenshotStatus = ref<Record<string, { success: boolean; error?: string }>>({});
 
+// 视频流相关
+const streamEnabled = ref(false);
+const streamLoading = ref(false);
+const streamError = ref<string | null>(null);
+const wsConnection = ref<WebSocket | null>(null);
+const playerContainer = ref<HTMLElement | null>(null);
+const player = ref<WebCodecsPlayer | null>(null);
+
 // 处理截图事件
 const handleScreenshotReady = (deviceId: string, imageData: string) => {
   screenshotStatus.value[deviceId] = { success: true };
@@ -124,6 +160,156 @@ const handleScreenshotReady = (deviceId: string, imageData: string) => {
 const handleScreenshotError = (deviceId: string, error: string) => {
   screenshotStatus.value[deviceId] = { success: false, error };
   console.error(`设备 ${deviceId} 截图加载失败:`, error);
+};
+
+// 启动/停止视频流
+const toggleStream = async (enabled?: boolean) => {
+  const newState = typeof enabled === 'boolean' ? enabled : streamEnabled.value;
+  
+  // 如果正在切换状态，不重复操作
+  if (streamLoading.value) return;
+  
+  // 如果主设备不在线，不能开启串流
+  if (newState && (!mainDevice.value || mainDevice.value.status !== 'online')) {
+    ElMessage.warning('主设备不在线，无法启动视频流');
+    streamEnabled.value = false;
+    return;
+  }
+  
+  try {
+    streamLoading.value = true;
+    streamError.value = null;
+    
+    if (newState) {
+      // 启动串流
+      await startStream();
+    } else {
+      // 停止串流
+      await stopStream();
+    }
+    
+    streamEnabled.value = newState;
+  } catch (error) {
+    console.error('切换视频流失败:', error);
+    streamError.value = error instanceof Error ? error.message : '未知错误';
+    streamEnabled.value = false;
+  } finally {
+    streamLoading.value = false;
+  }
+};
+
+// 启动视频流
+const startStream = async () => {
+  if (!mainDevice.value) return;
+  
+  try {
+    // 调用后端接口获取串流信息
+    const response = await startDeviceStream(mainDevice.value.deviceId);
+    
+    if (response.code === 0 && response.data) {
+      const { port } = response.data;
+      
+      // 创建WebSocket连接
+      // 使用相对路径，让Vite代理配置来处理请求转发
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}/ws/wsscrcpy?udid=${mainDevice.value.deviceId}&port=${port}`;
+      console.log('连接WebSocket:', wsUrl);
+      
+      // 关闭可能存在的旧连接
+      if (wsConnection.value) {
+        wsConnection.value.close();
+      }
+      
+      // 创建新的WebSocket连接
+      const ws = new WebSocket(wsUrl);
+      wsConnection.value = ws;
+      
+      // 初始化播放器
+      initPlayer();
+      
+      // 设置WebSocket事件处理
+      ws.binaryType = 'arraybuffer';
+      
+      ws.onopen = () => {
+        console.log('WebSocket连接成功');
+        streamError.value = null;
+      };
+      
+      ws.onmessage = (event) => {
+        if (player.value && event.data instanceof ArrayBuffer) {
+          const data = new Uint8Array(event.data);
+          (player.value as any).pushFrame(data);
+        }
+      };
+      
+      ws.onerror = (event) => {
+        console.error('WebSocket错误:', event);
+        streamError.value = 'WebSocket连接错误';
+        stopStream().catch(console.error);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket连接关闭');
+        if (streamEnabled.value) {
+          streamError.value = 'WebSocket连接已关闭';
+          streamEnabled.value = false;
+        }
+      };
+      
+    } else {
+      throw new Error(response.message || '启动串流失败');
+    }
+  } catch (error) {
+    console.error('启动串流失败:', error);
+    throw error;
+  }
+};
+
+// 停止视频流
+const stopStream = async () => {
+  // 关闭WebSocket连接
+  if (wsConnection.value) {
+    wsConnection.value.close();
+    wsConnection.value = null;
+  }
+  
+  // 停止播放器
+  if (player.value) {
+    player.value.stop();
+    player.value = null;
+    
+    // 清空播放器容器
+    if (playerContainer.value) {
+      playerContainer.value.innerHTML = '';
+    }
+  }
+  
+  // 如果主设备存在，调用后端接口停止串流
+  if (mainDevice.value) {
+    try {
+      await stopDeviceStream(mainDevice.value.deviceId);
+    } catch (error) {
+      console.error('停止串流失败:', error);
+    }
+  }
+};
+
+// 初始化视频播放器
+const initPlayer = () => {
+  if (!playerContainer.value || !mainDevice.value) return;
+  
+  // 清空播放器容器
+  playerContainer.value.innerHTML = '';
+  
+  // 创建新的播放器实例
+  const displayInfo = new DisplayInfo(0, new Size(540, 960));
+  player.value = new WebCodecsPlayer(mainDevice.value.deviceId, displayInfo);
+  
+  // 设置播放器父容器，使用类型断言解决TypeScript错误
+  (player.value as any).setParent(playerContainer.value);
+  
+  // 启动播放器，使用类型断言解决TypeScript错误
+  (player.value as any).play();
 };
 
 // 初始化数据
@@ -155,6 +341,11 @@ watch(
     }
   }
 );
+
+// 组件卸载前清理资源
+onBeforeUnmount(() => {
+  stopStream().catch(console.error);
+});
 </script>
 
 <style scoped>
@@ -277,13 +468,23 @@ watch(
   object-position: center;
 }
 
-.offline-placeholder {
+.offline-placeholder,
+.stream-error {
   width: 100%;
   height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   background-color: #1a1a1a;
+}
+
+.stream-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #f56c6c;
+  gap: 10px;
 }
 
 .image-error {
@@ -308,6 +509,16 @@ watch(
 
 .device-id {
   color: #606266;
+}
+
+.retry-button {
+  margin-top: 10px;
+}
+
+.player-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 
 /* 响应式调整 */
