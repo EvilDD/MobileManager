@@ -168,7 +168,7 @@ watch(
 
 .devices-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, v-bind('(DEVICE_CONFIG.SYNC.MAIN_DEVICE.WIDTH / 2) + "px"'));
+  grid-template-columns: repeat(auto-fill, v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH / 2) + "px"'));
   gap: 20px;
   justify-content: start;
   align-content: start;
@@ -195,15 +195,15 @@ watch(
 }
 
 .main-device {
-  width: v-bind('DEVICE_CONFIG.SYNC.MAIN_DEVICE.WIDTH + "px"');
-  height: v-bind('DEVICE_CONFIG.SYNC.MAIN_DEVICE.HEIGHT + "px"');
+  width: v-bind('DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH + "px"');
+  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT + 80) + "px"'); /* 添加header和info的高度 */
   grid-column: span 2;
   grid-row: span 2;
 }
 
 .other-device {
-  width: v-bind('(DEVICE_CONFIG.SYNC.MAIN_DEVICE.WIDTH / 2) + "px"');
-  height: v-bind('(DEVICE_CONFIG.SYNC.MAIN_DEVICE.HEIGHT / 2) + "px"');
+  width: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH / 2) + "px"');
+  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT / 2 + 74) + "px"'); /* 添加header和info的高度 */
 }
 
 .device-header {
@@ -230,27 +230,51 @@ watch(
   justify-content: center;
   align-items: center;
   background-color: #000;
+  box-sizing: content-box;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
 /* 设备截图样式 */
 .main-device .device-screen {
-  height: calc(100% - 80px); /* 减去header和info的高度 */
+  height: v-bind('DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT + "px"');
+  width: v-bind('DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH + "px"');
+  flex: none; /* 确保不受flex布局影响 */
 }
 
 .other-device .device-screen {
-  height: calc(100% - 74px); /* 减去header和info的高度 */
+  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT / 2) + "px"');
+  width: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH / 2) + "px"');
+  flex: none; /* 确保不受flex布局影响 */
 }
 
 .device-screen :deep(.device-screenshot-container) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100% !important;
   height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .device-screen :deep(.screenshot-image) {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  max-height: 100%;
+  object-fit: cover; /* 使用cover而非contain确保填满容器 */
+  max-height: none;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: block;
+  object-position: center;
 }
 
 .offline-placeholder {
@@ -294,11 +318,11 @@ watch(
   
   .main-device {
     grid-column: span 1;
-    height: 500px;
+    height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT + 80) + "px"');
   }
   
   .other-device {
-    height: 280px;
+    height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT / 2 + 74) + "px"');
   }
 }
 </style> 

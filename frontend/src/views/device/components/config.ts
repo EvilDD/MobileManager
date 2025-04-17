@@ -35,9 +35,13 @@ export const STREAM_WINDOW_CONFIG = {
 export const DEVICE_CONFIG = {
   // 云机同步设备尺寸配置
   SYNC: {
-    MAIN_DEVICE: {
+    CANVAS_PORTRAIT: {
       WIDTH: 360,
-      HEIGHT: 640+82
+      HEIGHT: 640
+    },
+    CANVAS_LANDSCAPE: {
+      WIDTH: 640,
+      HEIGHT: 360
     }
   }
 } as const;

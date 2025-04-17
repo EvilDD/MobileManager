@@ -51,7 +51,7 @@ var (
 			})
 
 			// 注册WebSocket路由
-			s.BindHandler("/ws/scrcpy", websocket.NewScrcpyController().Handler)
+			s.BindHandler("/wsscrcpy", websocket.NewScrcpyController().Handler)
 
 			s.Run()
 			return nil
