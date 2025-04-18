@@ -103,7 +103,7 @@ go run main.go
 ```bash
 cd frontend
 pnpm install
-pnpm dev
+pnpm run dev
 ```
 
 4. 串流服务（WebScrcpy）

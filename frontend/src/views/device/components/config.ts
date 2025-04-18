@@ -40,8 +40,8 @@ export const DEVICE_CONFIG = {
       HEIGHT: 928
     },
     CANVAS_LANDSCAPE: {
-      WIDTH: 640,
-      HEIGHT: 360
+      WIDTH: 928,
+      HEIGHT: 512
     }
   }
 } as const;
