@@ -1,6 +1,13 @@
 /**
  * WebCodecsPlayer - 使用 WebCodecs API 解码和播放视频流
  */
+import H264Parser from 'h264-converter/dist/h264-parser';
+
+// 实现 toHex 工具函数，由于库中可能没有直接导出该函数
+function toHex(value: number): string {
+  return value.toString(16).padStart(2, '0');
+}
+
 export class WebCodecsPlayer {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
@@ -66,16 +73,30 @@ export class WebCodecsPlayer {
       // 获取设备像素比
       const dpr = window.devicePixelRatio || 1;
       
-      // 计算实际显示尺寸
-      const displayWidth = Math.round(this.videoWidth);
-      const displayHeight = Math.round(this.videoHeight);
+      // 获取父容器尺寸
+      let parentWidth = this.parent?.clientWidth || window.innerWidth;
+      let parentHeight = this.parent?.clientHeight || window.innerHeight;
+      
+      // 计算适合的显示尺寸，保持宽高比
+      let displayWidth = this.videoWidth;
+      let displayHeight = this.videoHeight;
+      
+      // 计算缩放因子
+      const scaleX = parentWidth / displayWidth;
+      const scaleY = parentHeight / displayHeight;
+      const scale = Math.min(scaleX, scaleY);
+      
+      // 应用缩放
+      displayWidth = Math.floor(displayWidth * scale);
+      displayHeight = Math.floor(displayHeight * scale);
       
       // 计算Canvas的物理像素尺寸
       const canvasWidth = Math.round(displayWidth * dpr);
       const canvasHeight = Math.round(displayHeight * dpr);
       
       console.log('视频原始尺寸:', { width: this.videoWidth, height: this.videoHeight });
-      console.log('设备像素比:', dpr);
+      console.log('父容器尺寸:', { width: parentWidth, height: parentHeight });
+      console.log('应用的缩放因子:', scale);
       console.log('显示尺寸:', { displayWidth, displayHeight });
       console.log('Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
       
@@ -89,6 +110,9 @@ export class WebCodecsPlayer {
       
       // 设置Canvas的缩放以匹配设备像素比
       if (this.ctx) {
+        // 重置变换
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // 应用设备像素比缩放
         this.ctx.scale(dpr, dpr);
       }
       
@@ -106,33 +130,38 @@ export class WebCodecsPlayer {
    */
   private extractResolutionFromSPS(spsData: Uint8Array): void {
     try {
-      // 跳过NAL单元类型字节
-      const data = spsData.subarray(1);
+      const parsedSPS = H264Parser.parseSPS(spsData);
+      const {
+        profile_idc,
+        constraint_set_flags,
+        level_idc,
+        pic_width_in_mbs_minus1,
+        frame_crop_left_offset,
+        frame_crop_right_offset,
+        frame_mbs_only_flag,
+        pic_height_in_map_units_minus1,
+        frame_crop_top_offset,
+        frame_crop_bottom_offset,
+        sar,
+      } = parsedSPS;
+
+      const sarScale = sar[0] / sar[1];
+      this.codecString = `avc1.${[profile_idc, constraint_set_flags, level_idc].map(toHex).join('')}`;
       
-      // 读取基本参数
-      const profile_idc = data[0];
-      const constraint_set_flags = data[1];
-      const level_idc = data[2];
-      
-      // 计算宽高
-      const pic_width_in_mbs_minus1 = data[7] & 0xFF;
-      const frame_mbs_only_flag = (data[9] & 0x80) >> 7;
-      const pic_height_in_map_units_minus1 = data[8] & 0xFF;
-      
-      // 计算实际宽高
-      const width = (pic_width_in_mbs_minus1 + 1) * 16;
-      const height = (2 - frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16;
-      
-      // 构建编解码器字符串
-      this.codecString = `avc1.${[profile_idc, constraint_set_flags, level_idc]
-        .map(v => v.toString(16).padStart(2, '0')).join('')}`;
+      const width = Math.ceil(
+        ((pic_width_in_mbs_minus1 + 1) * 16 - frame_crop_left_offset * 2 - frame_crop_right_offset * 2) * sarScale,
+      );
+      const height =
+        (2 - frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16 -
+        (frame_mbs_only_flag ? 2 : 4) * (frame_crop_top_offset + frame_crop_bottom_offset);
       
       console.log(`从SPS解析出视频信息:`, {
         width,
         height,
         codec: this.codecString,
         profile: profile_idc,
-        level: level_idc
+        level: level_idc,
+        rawSPSData: parsedSPS
       });
       
       if (width > 0 && height > 0) {
