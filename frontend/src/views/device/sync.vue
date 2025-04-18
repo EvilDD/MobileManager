@@ -16,6 +16,19 @@
           </div>
         </div>
         <div class="device-screen">
+          <!-- 添加触摸层，覆盖在视频流上方 -->
+          <div
+            v-if="streamEnabled && !streamError" 
+            class="touch-layer"
+            @mousedown="handleMouseDown"
+            @mousemove="handleMouseMove"
+            @mouseup="handleMouseUp"
+            @mouseleave="handleMouseUp"
+            @touchstart="handleTouchStart"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+          />
+
           <!-- 视频流播放器容器 - 仅在需要时才存在 -->
           <div 
             v-if="streamEnabled && !streamError" 
@@ -189,6 +202,214 @@ const syncEnabled = ref(false);
 // 视频流接收状态
 const videoFrameReceived = ref(false);
 
+// 触摸事件相关
+// 保存触摸点位置
+const touchPoint = ref({ x: 0, y: 0 });
+const touchStartPoint = ref({ x: 0, y: 0 });
+const isTouching = ref(false);
+
+// 触摸事件动作常量，与后端保持一致
+const TOUCH_ACTION = {
+  DOWN: 0,
+  UP: 1,
+  MOVE: 2
+};
+
+// 源坐标和目标坐标尺寸
+// 源坐标使用CANVAS_PORTRAIT的配置尺寸
+const sourceScreen = ref({
+  width: DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH,
+  height: DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT
+});
+// 目标坐标将从SPS或视频流参数中获取
+const targetScreen = ref({ width: 0, height: 0 });
+
+// 坐标转换函数 - 将前端CSS坐标转换为实际设备坐标
+const convertCoordinates = (x: number, y: number) => {
+  // 如果targetScreen尺寸无效，则使用相同坐标
+  if (targetScreen.value.width <= 0 || targetScreen.value.height <= 0) {
+    console.warn('目标屏幕尺寸无效，使用原始坐标');
+    return { x, y };
+  }
+  
+  // 计算缩放比例
+  const scaleX = targetScreen.value.width / sourceScreen.value.width;
+  const scaleY = targetScreen.value.height / sourceScreen.value.height;
+  
+  // 应用缩放比例
+  const targetX = Math.round(x * scaleX);
+  const targetY = Math.round(y * scaleY);
+  
+  console.log(`坐标转换: (${x},${y}) => (${targetX},${targetY}), 比例: ${scaleX.toFixed(2)}x${scaleY.toFixed(2)}`);
+  
+  return { x: targetX, y: targetY };
+};
+
+// 发送触摸事件到后端
+const sendTouchEvent = (action: number, x: number, y: number) => {
+  // 确保WebSocket连接可用
+  if (!wsConnection.value || wsConnection.value.readyState !== WebSocket.OPEN) {
+    console.warn('WebSocket连接不可用，无法发送触摸事件');
+    return;
+  }
+  
+  // 转换坐标
+  const { x: targetX, y: targetY } = convertCoordinates(x, y);
+  
+  // 创建触摸事件消息对象 - 使用正确的消息格式
+  const touchEvent = {
+    type: "touch",  
+    data: {
+      action: action,
+      x: targetX,
+      y: targetY
+    }
+  };
+
+  console.log('发送触摸事件:', touchEvent);
+
+  try {
+    // 发送事件到后端
+    wsConnection.value.send(JSON.stringify(touchEvent));
+  } catch (error) {
+    console.error('发送触摸事件失败:', error);
+  }
+};
+
+// 处理鼠标按下事件
+const handleMouseDown = (event: MouseEvent) => {
+  isTouching.value = true;
+  touchStartPoint.value = {
+    x: event.offsetX,
+    y: event.offsetY
+  };
+  touchPoint.value = {
+    x: event.offsetX,
+    y: event.offsetY
+  };
+  
+  console.log('鼠标按下事件', {
+    x: event.offsetX,
+    y: event.offsetY,
+    button: event.button,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸按下事件到后端
+  sendTouchEvent(TOUCH_ACTION.DOWN, event.offsetX, event.offsetY);
+};
+
+// 处理鼠标移动事件
+const handleMouseMove = (event: MouseEvent) => {
+  if (!isTouching.value) return;
+  
+  touchPoint.value = {
+    x: event.offsetX,
+    y: event.offsetY
+  };
+  
+  console.log('鼠标移动事件', {
+    x: event.offsetX,
+    y: event.offsetY,
+    deltaX: event.offsetX - touchStartPoint.value.x,
+    deltaY: event.offsetY - touchStartPoint.value.y,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸移动事件到后端
+  sendTouchEvent(TOUCH_ACTION.MOVE, event.offsetX, event.offsetY);
+};
+
+// 处理鼠标抬起事件
+const handleMouseUp = (event: MouseEvent) => {
+  if (!isTouching.value) return;
+  
+  isTouching.value = false;
+  
+  console.log('鼠标抬起事件', {
+    x: event.offsetX,
+    y: event.offsetY,
+    deltaX: event.offsetX - touchStartPoint.value.x,
+    deltaY: event.offsetY - touchStartPoint.value.y,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸抬起事件到后端
+  sendTouchEvent(TOUCH_ACTION.UP, event.offsetX, event.offsetY);
+};
+
+// 处理触摸开始事件 - 移动设备支持
+const handleTouchStart = (event: TouchEvent) => {
+  event.preventDefault(); // 阻止默认行为
+  
+  isTouching.value = true;
+  const touch = event.touches[0];
+  const target = event.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  
+  touchStartPoint.value = { x, y };
+  touchPoint.value = { x, y };
+  
+  console.log('触摸开始事件', {
+    x,
+    y,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸按下事件到后端
+  sendTouchEvent(TOUCH_ACTION.DOWN, x, y);
+};
+
+// 处理触摸移动事件 - 移动设备支持
+const handleTouchMove = (event: TouchEvent) => {
+  event.preventDefault(); // 阻止默认行为
+  
+  if (!isTouching.value) return;
+  
+  const touch = event.touches[0];
+  const target = event.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  
+  touchPoint.value = { x, y };
+  
+  console.log('触摸移动事件', {
+    x,
+    y,
+    deltaX: x - touchStartPoint.value.x,
+    deltaY: y - touchStartPoint.value.y,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸移动事件到后端
+  sendTouchEvent(TOUCH_ACTION.MOVE, x, y);
+};
+
+// 处理触摸结束事件 - 移动设备支持
+const handleTouchEnd = (event: TouchEvent) => {
+  event.preventDefault(); // 阻止默认行为
+  
+  if (!isTouching.value) return;
+  
+  isTouching.value = false;
+  
+  console.log('触摸结束事件', {
+    endX: touchPoint.value.x,
+    endY: touchPoint.value.y,
+    deltaX: touchPoint.value.x - touchStartPoint.value.x,
+    deltaY: touchPoint.value.y - touchStartPoint.value.y,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸抬起事件到后端
+  sendTouchEvent(TOUCH_ACTION.UP, touchPoint.value.x, touchPoint.value.y);
+};
+
 // 操作同步处理
 const handleSyncOperation = (enabled: boolean) => {
   syncEnabled.value = enabled;
@@ -259,12 +480,37 @@ const safeHandleWSMessage = (event: MessageEvent, ws: WebSocket) => {
     return;
   }
   
-  // 以下是原有的消息处理逻辑，添加了组件状态检查
-  if (!player.value) {
-    console.error('收到WebSocket消息，但播放器未初始化');
+  // 处理JSON消息，可能包含设备初始信息
+  if (typeof event.data === 'string') {
+    try {
+      const jsonData = JSON.parse(event.data);
+      console.log('收到WebSocket JSON消息:', jsonData);
+      
+      // 处理不同类型的消息
+      if (jsonData.type === 'initial_info' && jsonData.data) {
+        // 处理设备初始信息
+        handleInitialInfo(jsonData.data);
+      } else if (jsonData.type === 'connected' && jsonData.data) {
+        // 连接成功消息，可能包含设备信息
+        if (jsonData.data.screenWidth && jsonData.data.screenHeight) {
+          updateScreenResolution(jsonData.data.screenWidth, jsonData.data.screenHeight);
+        }
+      } else if (jsonData.type === 'device_info' && jsonData.data) {
+        // 设备信息消息
+        if (jsonData.data.videoWidth && jsonData.data.videoHeight) {
+          updateScreenResolution(jsonData.data.videoWidth, jsonData.data.videoHeight);
+        } else if (jsonData.data.screenWidth && jsonData.data.screenHeight) {
+          updateScreenResolution(jsonData.data.screenWidth, jsonData.data.screenHeight);
+        }
+      }
+    } catch (e) {
+      // 不是JSON格式，当作普通文本处理
+      console.log('收到WebSocket文本消息:', event.data);
+    }
     return;
   }
   
+  // 以下是处理视频帧数据的原有逻辑
   if (event.data instanceof ArrayBuffer) {
     // 如果组件已卸载，不处理后续消息
     if (!isComponentMounted.value || !isComponentActive.value) return;
@@ -299,7 +545,7 @@ const safeHandleWSMessage = (event: MessageEvent, ws: WebSocket) => {
       
       (player.value as any).pushFrame(data);
       
-      // 第一帧后检查播放器容器状态
+      // 第一帧后检查播放器容器状态和更新分辨率
       if (ws.frameCount === 1) {
         setTimeout(() => {
           if (playerContainer.value && isComponentMounted.value && isComponentActive.value) {
@@ -311,6 +557,26 @@ const safeHandleWSMessage = (event: MessageEvent, ws: WebSocket) => {
               display: window.getComputedStyle(playerContainer.value).display,
               children: playerContainer.value.children.length
             });
+            
+            // 获取视频实际尺寸并更新目标屏幕分辨率
+            if (mainDevice.value) {
+              // 尝试从播放器获取尺寸信息（如果播放器提供）
+              if (player.value && (player.value as any).getVideoSize) {
+                const size = (player.value as any).getVideoSize();
+                if (size && size.width && size.height) {
+                  updateScreenResolution(size.width, size.height);
+                  return;
+                }
+              }
+              
+              // 尝试从设备信息获取尺寸
+              if (mainDevice.value.screenWidth && mainDevice.value.screenHeight) {
+                updateScreenResolution(mainDevice.value.screenWidth, mainDevice.value.screenHeight);
+              } else {
+                // 如果都没有，使用默认的设备分辨率
+                updateScreenResolution(1080, 1920); // 大多数Android设备的默认分辨率
+              }
+            }
           }
         }, 100);
       }
@@ -749,6 +1015,22 @@ onMounted(() => {
       }
     });
   }, 500);
+
+  // 在组件挂载后获取触摸层的尺寸并确认源尺寸正确
+  setTimeout(() => {
+    const touchLayer = document.querySelector('.touch-layer') as HTMLElement;
+    if (touchLayer) {
+      const rect = touchLayer.getBoundingClientRect();
+      console.log('触摸层CSS尺寸:', {width: rect.width, height: rect.height});
+      console.log('源屏幕配置尺寸:', sourceScreen.value);
+      
+      // 如果CSS尺寸与配置尺寸不一致，打印警告
+      if (Math.abs(rect.width - sourceScreen.value.width) > 5 || 
+          Math.abs(rect.height - sourceScreen.value.height) > 5) {
+        console.warn('触摸层实际尺寸与配置尺寸不一致，可能影响坐标转换精度');
+      }
+    }
+  }, 1000);
 });
 
 // 监听路由变化,如果没有选中设备则返回分组手机页面
@@ -1077,6 +1359,29 @@ const retryOtherDeviceStream = async (deviceId: string) => {
   // 重新启动流
   await startOtherDeviceStream(deviceId);
 };
+
+// 在WebSocket连接成功后记录设备信息并更新目标屏幕尺寸
+const updateScreenResolution = (width: number, height: number) => {
+  if (width > 0 && height > 0) {
+    console.log(`更新设备分辨率: ${width}x${height}`);
+    targetScreen.value = { width, height };
+    
+    // 记录缩放比例
+    const scaleX = width / sourceScreen.value.width;
+    const scaleY = height / sourceScreen.value.height;
+    console.log(`坐标转换比例: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}`);
+  }
+};
+
+// 从WebSocket接收到初始化信息时调用
+const handleInitialInfo = (data: any) => {
+  if (data && data.videoWidth && data.videoHeight) {
+    updateScreenResolution(data.videoWidth, data.videoHeight);
+  } else if (data && data.screenWidth && data.screenHeight) {
+    // 如果没有视频尺寸，尝试使用屏幕尺寸
+    updateScreenResolution(data.screenWidth, data.screenHeight);
+  }
+};
 </script>
 
 <style scoped>
@@ -1087,6 +1392,18 @@ const retryOtherDeviceStream = async (deviceId: string) => {
   background-color: #000;
   z-index: 1;
   position: relative;
+}
+
+/* 添加触摸层样式 */
+.touch-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10; /* 确保在视频层之上 */
+  background-color: transparent;
+  cursor: pointer;
 }
 
 .stream-error,
