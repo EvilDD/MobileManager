@@ -1,255 +1,369 @@
-import { BaseCanvasBasedPlayer } from './BaseCanvasBasedPlayer';
-import VideoSettings from '../VideoSettings';
-import Size from '../Size';
-import { DisplayInfo } from '../DisplayInfo';
-import H264Parser from 'h264-converter/dist/h264-parser';
-import NALU from 'h264-converter/dist/util/NALU';
-import ScreenInfo from '../ScreenInfo';
-import Rect from '../Rect';
+/**
+ * WebCodecsPlayer - 使用 WebCodecs API 解码和播放视频流
+ */
+export class WebCodecsPlayer {
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private decoder: VideoDecoder | null = null;
+  private parent: HTMLElement | null = null;
+  private isPlaying = false;
+  private frameCounter = 0;
+  private lastFrameTime = 0;
+  private frameRate = 0;
+  private pendingFrames = 0;
+  private frameInterval: number | null = null;
+  private videoWidth = 0;
+  private videoHeight = 0;
+  private keyFrameFound = false;
+  private buffer: Uint8Array | undefined;
+  private bufferedSPS = false;
+  private bufferedPPS = false;
+  private codecString = 'avc1.640028'; // 默认编解码器字符串
 
-type ParametersSubSet = {
-    codec: string;
-    width: number;
-    height: number;
-};
+  // NAL 单元类型常量
+  private readonly NAL_TYPE_SPS = 7;
+  private readonly NAL_TYPE_PPS = 8;
+  private readonly NAL_TYPE_IDR = 5; // IDR 帧 (关键帧)
+  private readonly NAL_TYPE_SEI = 6; // SEI (补充增强信息)
 
-function toHex(value: number) {
-    return value.toString(16).padStart(2, '0').toUpperCase();
-}
+  constructor() {
+    // 检查浏览器是否支持 WebCodecs API
+    if (!('VideoDecoder' in window)) {
+      throw new Error('当前浏览器不支持 WebCodecs API');
+    }
+  }
 
-export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
-    public static readonly storageKeyPrefix = 'WebCodecsPlayer';
-    public static readonly playerFullName = 'WebCodecs';
-    public static readonly playerCodeName = 'webcodecs';
+  /**
+   * 设置播放器的父容器
+   * @param element 父容器元素
+   */
+  setParent(element: HTMLElement): void {
+    this.parent = element;
+    
+    // 创建 canvas 元素
+    this.canvas = document.createElement('canvas');
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+    this.canvas.style.display = 'block';
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.left = '0';
+    this.canvas.style.top = '0';
+    this.canvas.style.transformOrigin = '0 0';
+    this.parent.appendChild(this.canvas);
+    
+    // 获取绘图上下文
+    this.ctx = this.canvas.getContext('2d');
+    
+    // 处理窗口大小调整事件
+    window.addEventListener('resize', this.handleResize.bind(this));
+  }
 
-    public static readonly preferredVideoSettings: VideoSettings = new VideoSettings({
-        lockedVideoOrientation: -1,
-        bitrate: 5000000,
-        maxFps: 24,
-        iFrameInterval: 5,
-        bounds: new Size(540, 960),
-        sendFrameMeta: false,
-    });
+  /**
+   * 处理窗口大小调整
+   */
+  private handleResize(): void {
+    if (this.canvas && this.videoWidth > 0 && this.videoHeight > 0) {
+      // 获取设备像素比
+      const dpr = window.devicePixelRatio || 1;
+      
+      // 计算实际显示尺寸
+      const displayWidth = Math.round(this.videoWidth);
+      const displayHeight = Math.round(this.videoHeight);
+      
+      // 计算Canvas的物理像素尺寸
+      const canvasWidth = Math.round(displayWidth * dpr);
+      const canvasHeight = Math.round(displayHeight * dpr);
+      
+      console.log('视频原始尺寸:', { width: this.videoWidth, height: this.videoHeight });
+      console.log('设备像素比:', dpr);
+      console.log('显示尺寸:', { displayWidth, displayHeight });
+      console.log('Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
+      
+      // 设置Canvas的物理像素尺寸
+      this.canvas.width = canvasWidth;
+      this.canvas.height = canvasHeight;
+      
+      // 设置Canvas的CSS显示尺寸
+      this.canvas.style.width = `${displayWidth}px`;
+      this.canvas.style.height = `${displayHeight}px`;
+      
+      // 设置Canvas的缩放以匹配设备像素比
+      if (this.ctx) {
+        this.ctx.scale(dpr, dpr);
+      }
+      
+      // 如果父元素存在，也更新其尺寸
+      if (this.parent) {
+        this.parent.style.width = `${displayWidth}px`;
+        this.parent.style.height = `${displayHeight}px`;
+      }
+    }
+  }
+  
+  /**
+   * 从SPS数据中提取视频分辨率
+   * @param spsData SPS NAL单元数据
+   */
+  private extractResolutionFromSPS(spsData: Uint8Array): void {
+    try {
+      // 跳过NAL单元类型字节
+      const data = spsData.subarray(1);
+      
+      // 读取基本参数
+      const profile_idc = data[0];
+      const constraint_set_flags = data[1];
+      const level_idc = data[2];
+      
+      // 计算宽高
+      const pic_width_in_mbs_minus1 = data[7] & 0xFF;
+      const frame_mbs_only_flag = (data[9] & 0x80) >> 7;
+      const pic_height_in_map_units_minus1 = data[8] & 0xFF;
+      
+      // 计算实际宽高
+      const width = (pic_width_in_mbs_minus1 + 1) * 16;
+      const height = (2 - frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16;
+      
+      // 构建编解码器字符串
+      this.codecString = `avc1.${[profile_idc, constraint_set_flags, level_idc]
+        .map(v => v.toString(16).padStart(2, '0')).join('')}`;
+      
+      console.log(`从SPS解析出视频信息:`, {
+        width,
+        height,
+        codec: this.codecString,
+        profile: profile_idc,
+        level: level_idc
+      });
+      
+      if (width > 0 && height > 0) {
+        this.videoWidth = width;
+        this.videoHeight = height;
+        this.handleResize();
+      }
+    } catch (error) {
+      console.error('SPS解析错误:', error);
+    }
+  }
 
-    public static isSupported(): boolean {
-        if (typeof VideoDecoder !== 'function' || typeof VideoDecoder.isConfigSupported !== 'function') {
-            return false;
+  /**
+   * 初始化解码器
+   */
+  private initDecoder(): void {
+    if (this.decoder && this.decoder.state !== 'closed') {
+      return;
+    }
+
+    try {
+      this.decoder = new VideoDecoder({
+        output: this.handleDecodedFrame.bind(this),
+        error: (error) => {
+          console.error('解码器错误:', error);
+          this.stop();
         }
-
-        // FIXME: verify support
-        // const result = await VideoDecoder.isConfigSupported();
-        return true;
+      });
+      
+      console.log('解码器初始化成功');
+    } catch (error) {
+      console.error('解码器初始化失败:', error);
     }
+  }
 
-    private static parseSPS(data: Uint8Array): ParametersSubSet {
-        const {
-            profile_idc,
-            constraint_set_flags,
-            level_idc,
-            pic_width_in_mbs_minus1,
-            frame_crop_left_offset,
-            frame_crop_right_offset,
-            frame_mbs_only_flag,
-            pic_height_in_map_units_minus1,
-            frame_crop_top_offset,
-            frame_crop_bottom_offset,
-            sar,
-        } = H264Parser.parseSPS(data);
-
-        const sarScale = sar[0] / sar[1];
-        const codec = `avc1.${[profile_idc, constraint_set_flags, level_idc].map(toHex).join('')}`;
-        const width = Math.ceil(
-            ((pic_width_in_mbs_minus1 + 1) * 16 - frame_crop_left_offset * 2 - frame_crop_right_offset * 2) * sarScale,
-        );
-        const height =
-            (2 - frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16 -
-            (frame_mbs_only_flag ? 2 : 4) * (frame_crop_top_offset + frame_crop_bottom_offset);
-        return { codec, width, height };
+  /**
+   * 配置解码器
+   */
+  private configureDecoder(): void {
+    if (!this.decoder || this.decoder.state === 'configured') return;
+    
+    try {
+      const config: VideoDecoderConfig = {
+        codec: this.codecString,
+        optimizeForLatency: true
+      };
+      
+      this.decoder.configure(config);
+      console.log(`解码器配置成功:`, config);
+    } catch (error) {
+      console.error('解码器配置失败:', error);
     }
+  }
 
-    public readonly supportsScreenshot = true;
-    private context: CanvasRenderingContext2D;
-    private decoder: VideoDecoder;
-    private buffer: ArrayBuffer | undefined;
-    private hadIDR = false;
-    private bufferedSPS = false;
-    private bufferedPPS = false;
+  /**
+   * 处理解码后的帧
+   * @param frame 解码后的视频帧
+   */
+  private handleDecodedFrame(frame: VideoFrame): void {
+    this.pendingFrames--;
+    this.frameCounter++;
+    
+    // 计算帧率
+    const now = performance.now();
+    if (now - this.lastFrameTime >= 1000) {
+      this.frameRate = this.frameCounter;
+      this.frameCounter = 0;
+      this.lastFrameTime = now;
+      console.log(`当前帧率: ${this.frameRate} FPS, 待处理帧: ${this.pendingFrames}`);
+    }
+    
+    // 直接绘制到canvas
+    if (this.ctx && this.canvas) {
+      try {
+        this.ctx.drawImage(frame, 0, 0);
+      } catch (e) {
+        console.error('Canvas drawImage 错误:', e);
+      }
+    }
+    
+    // 关闭帧以释放资源
+    frame.close();
+  }
 
-    constructor(udid: string, displayInfo?: DisplayInfo, name = WebCodecsPlayer.playerFullName) {
-        super(udid, displayInfo, name, WebCodecsPlayer.storageKeyPrefix);
-        const context = this.tag.getContext('2d');
-        if (!context) {
-            throw Error('Failed to get 2d context from canvas');
+  /**
+   * 处理视频数据
+   * @param data 视频数据
+   */
+  pushFrame(data: Uint8Array): void {
+    if (!this.isPlaying) return;
+    
+    if (!this.decoder || this.decoder.state === 'closed') {
+      this.initDecoder();
+      return;
+    }
+    
+    try {
+      // 确保数据至少包含NAL头
+      if (data.length < 5) {
+        console.log('数据太短，跳过');
+        return;
+      }
+      
+      // 获取NAL单元类型 (第5个字节的后5位)
+      const nalType = data[4] & 0x1F;
+      
+      // 处理不同类型的NAL单元
+      if (nalType === this.NAL_TYPE_SPS) {
+        console.log('收到SPS');
+        this.extractResolutionFromSPS(data.subarray(4));
+        this.configureDecoder();
+        this.bufferedSPS = true;
+        this.buffer = this.appendToBuffer(data);
+        this.keyFrameFound = false;
+        return;
+      } 
+      else if (nalType === this.NAL_TYPE_PPS) {
+        console.log('收到PPS');
+        this.bufferedPPS = true;
+        this.buffer = this.appendToBuffer(data);
+        return;
+      }
+      else if (nalType === this.NAL_TYPE_SEI) {
+        // 跳过单独的SEI
+        if (!this.bufferedSPS || !this.bufferedPPS) {
+          return;
         }
-        this.context = context;
-        this.decoder = this.createDecoder();
-    }
-
-    private createDecoder(): VideoDecoder {
-        return new VideoDecoder({
-            output: (frame) => {
-                this.onFrameDecoded(0, 0, frame);
-            },
-            error: (error: DOMException) => {
-                console.error(error, `code: ${error.code}`);
-                this.stop();
-            },
-        });
-    }
-
-    protected addToBuffer(data: Uint8Array): Uint8Array {
-        let array: Uint8Array;
-        if (this.buffer) {
-            array = new Uint8Array(this.buffer.byteLength + data.byteLength);
-            array.set(new Uint8Array(this.buffer));
-            array.set(new Uint8Array(data), this.buffer.byteLength);
-        } else {
-            array = data;
-        }
-        this.buffer = array.buffer;
-        return array;
-    }
-
-    protected scaleCanvas(width: number, height: number): void {
-        console.log('[WebCodecsPlayer]原始视频尺寸:', { width, height });
+      }
+      
+      // 将数据添加到缓冲区
+      const array = this.appendToBuffer(data);
+      
+      // 检查是否为IDR帧
+      const isIDR = nalType === this.NAL_TYPE_IDR;
+      if (isIDR) {
+        console.log('收到IDR帧');
+        this.keyFrameFound = true;
+      }
+      
+      // 只有在解码器配置完成且收到关键帧后才开始解码
+      if (array && this.decoder.state === 'configured' && this.keyFrameFound) {
+        // 重置缓冲区
+        this.buffer = undefined;
+        this.bufferedPPS = false;
+        this.bufferedSPS = false;
         
-        // 获取设备像素比
-        const dpr = window.devicePixelRatio || 1;
-        console.log('[WebCodecsPlayer]设备像素比:', dpr);
+        // 解码数据
+        this.decoder.decode(new EncodedVideoChunk({
+          type: 'key',
+          timestamp: 0,
+          data: array
+        }));
         
-        // 计算实际显示尺寸
-        const displayWidth = Math.round(width);
-        const displayHeight = Math.round(height);
-        
-        // 计算Canvas的物理像素尺寸
-        const canvasWidth = Math.round(displayWidth * dpr);
-        const canvasHeight = Math.round(displayHeight * dpr);
-        
-        console.log('[WebCodecsPlayer]显示尺寸:', { displayWidth, displayHeight });
-        console.log('[WebCodecsPlayer]Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
-        
-        const screenInfo = new ScreenInfo(new Rect(0, 0, width, height), new Size(displayWidth, displayHeight), 0);
-        this.emit('input-video-resize', screenInfo);
-        this.setScreenInfo(screenInfo);
-
-        // 初始化canvas，使用物理像素尺寸
-        this.initCanvas(canvasWidth, canvasHeight);
-
-        // 设置统一的CSS显示尺寸
-        const commonStyle = {
-            position: 'absolute',
-            left: '0',
-            top: '0',
-            width: `${displayWidth}px`,
-            height: `${displayHeight}px`,
-            transformOrigin: '0 0',
-            minWidth: '200px',
-            minHeight: '200px'
-        };
-
-        // 应用样式到视频层
-        Object.assign(this.tag.style, commonStyle);
-
-        // 应用样式到触摸层
-        Object.assign(this.touchableCanvas.style, commonStyle);
-        
-        // 设置Canvas的缩放以匹配设备像素比
-        this.context.scale(dpr, dpr);
-        
-        // 如果父元素存在，也更新其尺寸
-        if (this.parentElement) {
-            this.parentElement.style.width = `${displayWidth}px`;
-            this.parentElement.style.height = `${displayHeight}px`;
-        }
+        this.pendingFrames++;
+      }
+    } catch (error) {
+      console.error('处理视频数据错误:', error);
     }
-
-    protected decode(data: Uint8Array): void {
-        if (!data || data.length < 4) {
-            return;
-        }
-        const type = data[4] & 31;
-        const isIDR = type === NALU.IDR;
-
-        if (type === NALU.SPS) {
-            const { codec, width, height } = WebCodecsPlayer.parseSPS(data.subarray(4));
-            this.scaleCanvas(width, height);
-            const config: VideoDecoderConfig = {
-                codec,
-                optimizeForLatency: true,
-            } as VideoDecoderConfig;
-            this.decoder.configure(config);
-            this.bufferedSPS = true;
-            this.addToBuffer(data);
-            this.hadIDR = false;
-            return;
-        } else if (type === NALU.PPS) {
-            this.bufferedPPS = true;
-            this.addToBuffer(data);
-            return;
-        } else if (type === NALU.SEI) {
-            // Workaround for lonely SEI from ws-qvh
-            if (!this.bufferedSPS || !this.bufferedPPS) {
-                return;
-            }
-        }
-        const array = this.addToBuffer(data);
-        this.hadIDR = this.hadIDR || isIDR;
-        if (array && this.decoder.state === 'configured' && this.hadIDR) {
-            this.buffer = undefined;
-            this.bufferedPPS = false;
-            this.bufferedSPS = false;
-            this.decoder.decode(
-                new EncodedVideoChunk({
-                    type: 'key',
-                    timestamp: 0,
-                    data: array.buffer,
-                }),
-            );
-            return;
-        }
+  }
+  
+  /**
+   * 将新数据添加到缓冲区
+   */
+  private appendToBuffer(data: Uint8Array): Uint8Array {
+    let array: Uint8Array;
+    if (this.buffer) {
+      array = new Uint8Array(this.buffer.length + data.length);
+      array.set(this.buffer);
+      array.set(data, this.buffer.length);
+    } else {
+      array = data;
     }
+    return array;
+  }
 
-    protected drawDecoded = (): void => {
-        if (this.receivedFirstFrame) {
-            const data = this.decodedFrames.shift();
-            if (data) {
-                const frame: VideoFrame = data.frame;
-                this.context.drawImage(frame, 0, 0);
-                frame.close();
-            }
-        }
-        if (this.decodedFrames.length) {
-            this.animationFrameId = requestAnimationFrame(this.drawDecoded);
-        } else {
-            this.animationFrameId = undefined;
-        }
-    };
-
-    protected dropFrame(frame: VideoFrame): void {
-        frame.close();
+  /**
+   * 开始播放
+   */
+  play(): void {
+    if (this.isPlaying) {
+      return;
     }
+    
+    this.isPlaying = true;
+    this.keyFrameFound = false;
+    this.bufferedSPS = false;
+    this.bufferedPPS = false;
+    this.buffer = undefined;
+    this.initDecoder();
+    
+    console.log('播放器启动');
+  }
 
-    public getFitToScreenStatus(): boolean {
-        // 总是返回true以确保视频适应屏幕
-        return true;
+  /**
+   * 停止播放
+   */
+  stop(): void {
+    this.isPlaying = false;
+    
+    // 清除渲染定时器
+    if (this.frameInterval !== null) {
+      clearInterval(this.frameInterval);
+      this.frameInterval = null;
     }
-
-    public getPreferredVideoSetting(): VideoSettings {
-        return WebCodecsPlayer.preferredVideoSettings;
+    
+    // 关闭解码器
+    if (this.decoder) {
+      try {
+        this.decoder.close();
+        this.decoder = null;
+      } catch (error) {
+        console.error('关闭解码器错误:', error);
+      }
     }
-
-    public loadVideoSettings(): VideoSettings {
-        return WebCodecsPlayer.loadVideoSettings(this.udid, this.displayInfo);
+    
+    // 重置状态
+    this.keyFrameFound = false;
+    this.bufferedSPS = false;
+    this.bufferedPPS = false;
+    this.buffer = undefined;
+    
+    // 移除 canvas
+    if (this.canvas && this.parent) {
+      this.parent.removeChild(this.canvas);
+      this.canvas = null;
+      this.ctx = null;
     }
-
-    protected needScreenInfoBeforePlay(): boolean {
-        return false;
-    }
-
-    public stop(): void {
-        super.stop();
-        if (this.decoder.state === 'configured') {
-            this.decoder.close();
-        }
-    }
+    
+    // 移除事件监听器
+    window.removeEventListener('resize', this.handleResize.bind(this));
+    
+    console.log('播放器停止');
+  }
 }

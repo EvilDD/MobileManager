@@ -115,8 +115,6 @@ import { DEVICE_CONFIG } from './components/config';
 
 // 导入视频播放器
 import { WebCodecsPlayer } from './player/WebCodecsPlayer';
-import Size from './Size';
-import { DisplayInfo } from './DisplayInfo';
 
 interface SyncDevice extends Device {
   isMainDevice?: boolean;
@@ -159,7 +157,7 @@ const handleScreenshotReady = (deviceId: string, imageData: string) => {
 
 const handleScreenshotError = (deviceId: string, error: string) => {
   screenshotStatus.value[deviceId] = { success: false, error };
-  console.error(`设备 ${deviceId} 截图加载失败:`, error);
+  // console.error(`设备 ${deviceId} 截图加载失败:`, error);
 };
 
 // 启动/停止视频流
@@ -302,8 +300,7 @@ const initPlayer = () => {
   playerContainer.value.innerHTML = '';
   
   // 创建新的播放器实例
-  const displayInfo = new DisplayInfo(0, new Size(540, 960));
-  player.value = new WebCodecsPlayer(mainDevice.value.deviceId, displayInfo);
+  player.value = new WebCodecsPlayer();
   
   // 设置播放器父容器，使用类型断言解决TypeScript错误
   (player.value as any).setParent(playerContainer.value);
