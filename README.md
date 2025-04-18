@@ -2,8 +2,8 @@
 
 <div align="center">
 <p align="center">
-  <a href="https://www.bilibili.com/video/BV1AAZpYWEnH" target="_blank">
-    观看演示视频 | Watch Demo Video
+  <a href="https://www.bilibili.com/video/BV1bL5jz7E6y" target="_blank">
+    观看合集视频-运行篇 | Watch Demo Video
   </a>
 </p>
 

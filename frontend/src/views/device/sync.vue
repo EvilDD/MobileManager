@@ -232,10 +232,13 @@ const convertCoordinates = (x: number, y: number) => {
     return { x, y };
   }
   
-  // 计算缩放比例
+  // 计算缩放比例 - 根据CSS显示尺寸和Canvas渲染尺寸的比例进行转换
+  // 例如：如果CSS显示尺寸是480x870，而Canvas渲染尺寸是512x928
+  // 那么x坐标需要乘以 512/480，y坐标需要乘以 928/870
   const scaleX = targetScreen.value.width / sourceScreen.value.width;
   const scaleY = targetScreen.value.height / sourceScreen.value.height;
-  
+  // console.log('scaleX', scaleX, 'targetScreen.value.width', targetScreen.value.width, 'sourceScreen.value.width', sourceScreen.value.width);
+  // console.log('scaleY', scaleY, 'targetScreen.value.height', targetScreen.value.height, 'sourceScreen.value.height', sourceScreen.value.height);
   // 应用缩放比例
   const targetX = Math.round(x * scaleX);
   const targetY = Math.round(y * scaleY);
@@ -245,12 +248,46 @@ const convertCoordinates = (x: number, y: number) => {
   return { x: targetX, y: targetY };
 };
 
-// 发送触摸事件到后端
+// 添加getVideoSize方法实现
+const getVideoSize = () => {
+  if (player.value) {
+    if (typeof (player.value as any).videoWidth !== 'undefined' && 
+        typeof (player.value as any).videoHeight !== 'undefined') {
+      const width = (player.value as any).videoWidth;
+      const height = (player.value as any).videoHeight;
+      if (width > 0 && height > 0) {
+        return { width, height };
+      }
+    }
+    
+    // 查找canvas元素，从其宽高获取
+    if (playerContainer.value) {
+      const canvas = playerContainer.value.querySelector('canvas');
+      if (canvas && canvas.width && canvas.height) {
+        return { width: canvas.width, height: canvas.height };
+      }
+    }
+  }
+  return null;
+};
+
+// 修改sendTouchEvent，添加内部尺寸检查
 const sendTouchEvent = (action: number, x: number, y: number) => {
   // 确保WebSocket连接可用
   if (!wsConnection.value || wsConnection.value.readyState !== WebSocket.OPEN) {
     console.warn('WebSocket连接不可用，无法发送触摸事件');
     return;
+  }
+  
+  // 检查targetScreen尺寸，如果未设置或不正确，尝试从视频尺寸获取
+  if (targetScreen.value.width <= 0 || targetScreen.value.height <= 0) {
+    const size = getVideoSize();
+    if (size && size.width > 0 && size.height > 0) {
+      console.log('发送触摸事件前更新目标屏幕尺寸:', size);
+      updateScreenResolution(size.width, size.height);
+    } else {
+      console.warn('目标屏幕尺寸无效，使用原始坐标发送触摸事件');
+    }
   }
   
   // 转换坐标
@@ -560,22 +597,7 @@ const safeHandleWSMessage = (event: MessageEvent, ws: WebSocket) => {
             
             // 获取视频实际尺寸并更新目标屏幕分辨率
             if (mainDevice.value) {
-              // 尝试从播放器获取尺寸信息（如果播放器提供）
-              if (player.value && (player.value as any).getVideoSize) {
-                const size = (player.value as any).getVideoSize();
-                if (size && size.width && size.height) {
-                  updateScreenResolution(size.width, size.height);
-                  return;
-                }
-              }
-              
-              // 尝试从设备信息获取尺寸
-              if (mainDevice.value.screenWidth && mainDevice.value.screenHeight) {
-                updateScreenResolution(mainDevice.value.screenWidth, mainDevice.value.screenHeight);
-              } else {
-                // 如果都没有，使用默认的设备分辨率
-                updateScreenResolution(1080, 1920); // 大多数Android设备的默认分辨率
-              }
+              // 不要在这里更新targetScreen，等待SPS解析完成后自动更新
             }
           }
         }, 100);
@@ -625,6 +647,40 @@ const initPlayer = () => {
     // 创建新的播放器实例
     console.log('创建WebCodecsPlayer实例');
     player.value = new WebCodecsPlayer();
+    
+    // 监听播放器的视频信息事件，从SPS获取真实视频尺寸
+    if (typeof player.value.on === 'function') {
+      player.value.on('videoInfo', (videoInfo: any) => {
+        if (videoInfo && videoInfo.width && videoInfo.height) {
+          console.log('收到播放器视频信息事件:', videoInfo);
+          updateScreenResolution(videoInfo.width, videoInfo.height);
+        }
+      });
+    } else {
+      // 如果没有事件机制，使用轮询方式
+      const checkVideoSize = () => {
+        if (!player.value || !isComponentMounted.value) return;
+        
+        try {
+          if (typeof (player.value as any).getVideoSize === 'function') {
+            const size = (player.value as any).getVideoSize();
+            if (size && size.width && size.height) {
+              console.log('轮询获取到视频尺寸:', size);
+              updateScreenResolution(size.width, size.height);
+              return; // 获取成功后停止轮询
+            }
+          }
+          
+          // 继续轮询
+          setTimeout(checkVideoSize, 500);
+        } catch (e) {
+          console.error('获取视频尺寸出错:', e);
+        }
+      };
+      
+      // 开始轮询检查视频尺寸
+      setTimeout(checkVideoSize, 1000);
+    }
     
     // 设置播放器父容器
     console.log('设置播放器父容器');
