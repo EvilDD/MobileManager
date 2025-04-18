@@ -75,16 +75,33 @@
           <span class="device-name">{{ device.name }}</span>
         </div>
         <div class="device-screen">
-          <device-screenshot
+          <!-- 视频流播放器容器 - 替换截图组件 -->
+          <div 
             v-if="device.status === 'online'"
-            :device-id="device.deviceId"
-            :auto-capture="true"
-            :quality="80"
-            :auto-refresh="autoRefresh"
-            :refresh-interval="refreshInterval"
-            @screenshot-ready="(imageData) => handleScreenshotReady(device.deviceId, imageData)"
-            @screenshot-error="(err) => handleScreenshotError(device.deviceId, err)"
-          />
+            class="other-device-player-container"
+            :id="`player-container-${device.deviceId}`"
+          >
+            <!-- 加载提示，只在未收到视频帧且无错误时显示 -->
+            <div 
+              v-if="!getOtherDeviceVideoReceived(device.deviceId) && !getOtherDeviceStreamError(device.deviceId)" 
+              class="video-loading-overlay"
+            >
+              <el-icon class="loading-icon"><Loading /></el-icon>
+              <span>准备视频数据...</span>
+            </div>
+
+            <!-- 错误状态 -->
+            <div 
+              v-if="getOtherDeviceStreamError(device.deviceId)" 
+              class="stream-error"
+            >
+              <el-icon><WarningFilled /></el-icon>
+              <span>{{ getOtherDeviceStreamError(device.deviceId) }}</span>
+              <el-button size="small" type="primary" @click="retryOtherDeviceStream(device.deviceId)" class="retry-button">
+                重试
+              </el-button>
+            </div>
+          </div>
           <div v-else class="offline-placeholder">
             <div class="image-error">
               <el-icon><WarningFilled /></el-icon>
@@ -116,7 +133,6 @@ import { WarningFilled, Loading } from '@element-plus/icons-vue';
 import { useCloudPhoneStore } from '@/store/modules/cloudphone';
 import type { Device } from '@/api/device';
 import { startDeviceStream, stopDeviceStream } from '@/api/device';
-import DeviceScreenshot from './components/DeviceScreenshot.vue';
 import { DEVICE_CONFIG } from './components/config';
 
 // 导入视频播放器
@@ -146,11 +162,6 @@ const deviceList = ref<SyncDevice[]>([]);
 const mainDevice = computed(() => deviceList.value.find(device => device.isMainDevice));
 const otherDevices = computed(() => deviceList.value.filter(device => !device.isMainDevice));
 
-// 截图相关
-const autoRefresh = ref(true);
-const refreshInterval = ref(5000); // 默认5秒刷新一次
-const screenshotStatus = ref<Record<string, { success: boolean; error?: string }>>({});
-
 // 视频流相关
 const streamEnabled = ref(false);
 const streamLoading = ref(false);
@@ -158,6 +169,15 @@ const streamError = ref<string | null>(null);
 const wsConnection = ref<WebSocket | null>(null);
 const playerContainer = ref<HTMLElement | null>(null);
 const player = ref<WebCodecsPlayer | null>(null);
+
+// 从设备视频流连接
+const otherDeviceConnections = ref<Record<string, {
+  wsConnection: WebSocket | null;
+  player: WebCodecsPlayer | null;
+  streamEnabled: boolean;
+  streamError: string | null;
+  videoFrameReceived?: boolean;
+}>>({});
 
 // 组件状态标记
 const isComponentMounted = ref(true);
@@ -175,27 +195,6 @@ const handleSyncOperation = (enabled: boolean) => {
   // 预留的操作同步方法，暂时只打印信息
   console.log('操作同步状态:', enabled);
   ElMessage.info(`操作同步${enabled ? '开启' : '关闭'}，功能待实现`);
-};
-
-// 处理截图事件 (仅用于其他设备)
-const handleScreenshotReady = (deviceId: string, imageData: string) => {
-  // 检查组件是否仍然挂载
-  if (!isComponentMounted.value) return;
-  
-  screenshotStatus.value[deviceId] = { success: true };
-  // 更新设备截图
-  const device = deviceList.value.find(d => d.deviceId === deviceId);
-  if (device) {
-    device.screenshot = imageData;
-  }
-};
-
-const handleScreenshotError = (deviceId: string, error: string) => {
-  // 检查组件是否仍然挂载
-  if (!isComponentMounted.value) return;
-  
-  screenshotStatus.value[deviceId] = { success: false, error };
-  // console.error(`设备 ${deviceId} 截图加载失败:`, error);
 };
 
 // 启动/停止视频流
@@ -474,9 +473,16 @@ onBeforeUnmount(() => {
     wsConnection.value.onclose = null;
   }
   
-  // 安全地停止流
+  // 安全地停止主设备流
   stopStream().catch(e => {
     console.warn('组件卸载时停止串流出错:', e);
+  });
+  
+  // 停止所有从设备的视频流
+  Object.keys(otherDeviceConnections.value).forEach(deviceId => {
+    stopOtherDeviceStream(deviceId).catch(e => {
+      console.warn(`组件卸载时停止设备 ${deviceId} 串流出错:`, e);
+    });
   });
   
   // 清空引用
@@ -712,16 +718,36 @@ onMounted(() => {
   
   console.log('主设备:', mainDevice.value);
   
+  // 初始化从设备视频流连接对象
+  otherDevices.value.forEach(device => {
+    otherDeviceConnections.value[device.deviceId] = {
+      wsConnection: null,
+      player: null,
+      streamEnabled: false,
+      streamError: null,
+      videoFrameReceived: false
+    };
+  });
+  
   // 延时自动启动串流
   setTimeout(() => {
     if (!isComponentMounted.value || !isComponentActive.value) return;
     
+    // 启动主设备视频流
     if (mainDevice.value && mainDevice.value.status === 'online') {
-      console.log('开始自动启动视频流');
+      console.log('开始自动启动主设备视频流');
       toggleStream(true);
     } else {
       console.log('主设备不在线，不自动启动视频流');
     }
+    
+    // 启动从设备视频流
+    otherDevices.value.forEach(device => {
+      if (device.status === 'online') {
+        console.log(`开始自动启动从设备 ${device.deviceId} 视频流`);
+        startOtherDeviceStream(device.deviceId);
+      }
+    });
   }, 500);
 });
 
@@ -737,14 +763,330 @@ watch(
     }
   }
 );
+
+// 启动从设备视频流
+const startOtherDeviceStream = async (deviceId: string) => {
+  // 检查组件是否还挂载
+  if (!isComponentMounted.value || !isComponentActive.value) return;
+  
+  // 获取设备信息
+  const device = otherDevices.value.find(d => d.deviceId === deviceId);
+  if (!device) {
+    console.error(`找不到设备 ${deviceId} 的信息`);
+    return;
+  }
+  
+  // 获取或初始化设备连接状态
+  if (!otherDeviceConnections.value[deviceId]) {
+    otherDeviceConnections.value[deviceId] = {
+      wsConnection: null,
+      player: null,
+      streamEnabled: false,
+      streamError: null,
+      videoFrameReceived: false
+    };
+  }
+  
+  const deviceConnection = otherDeviceConnections.value[deviceId];
+  
+  // 如果已经启用，不重复启动
+  if (deviceConnection.streamEnabled) return;
+  
+  try {
+    console.log(`开始启动设备 ${deviceId} 串流...`);
+    
+    // 获取播放器容器
+    const playerContainer = document.getElementById(`player-container-${deviceId}`);
+    if (!playerContainer) {
+      console.error(`设备 ${deviceId} 的播放器容器不存在`);
+      deviceConnection.streamError = '播放器容器不存在';
+      return;
+    }
+    
+    // 调用后端接口获取串流信息
+    console.log(`调用设备 ${deviceId} 串流API`);
+    
+    const response = await startDeviceStream(deviceId);
+    console.log(`获取设备 ${deviceId} 串流信息接口响应:`, response);
+    
+    // 再次检查组件状态
+    if (!isComponentMounted.value || !isComponentActive.value) return;
+    
+    if (response.code === 0 && response.data) {
+      const { port } = response.data;
+      console.log(`获取到设备 ${deviceId} 串流端口:`, port);
+      
+      // 初始化播放器
+      console.log(`开始初始化设备 ${deviceId} 播放器`);
+      
+      try {
+        // 确保之前的播放器已停止
+        if (deviceConnection.player) {
+          try {
+            deviceConnection.player.stop();
+            deviceConnection.player = null;
+          } catch (e) {
+            console.warn(`停止设备 ${deviceId} 旧播放器出错:`, e);
+          }
+        }
+        
+        // 设置播放器容器样式
+        playerContainer.style.width = '100%';
+        playerContainer.style.height = '100%';
+        playerContainer.style.backgroundColor = '#000';
+        
+        // 创建新的播放器实例
+        console.log(`创建设备 ${deviceId} WebCodecsPlayer实例`);
+        const player = new WebCodecsPlayer();
+        deviceConnection.player = player;
+        
+        // 设置播放器父容器
+        console.log(`设置设备 ${deviceId} 播放器父容器`);
+        player.setParent(playerContainer);
+        
+        // 启动播放器
+        console.log(`启动设备 ${deviceId} 播放器`);
+        player.play();
+        
+        deviceConnection.streamEnabled = true;
+        
+        // 创建WebSocket连接
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/wsscrcpy?udid=${deviceId}&port=${port}`;
+        console.log(`准备连接设备 ${deviceId} WebSocket:`, wsUrl);
+        
+        // 关闭可能存在的旧连接
+        if (deviceConnection.wsConnection) {
+          try {
+            console.log(`关闭设备 ${deviceId} 旧的WebSocket连接`);
+            (deviceConnection.wsConnection as any).isClosed = true;
+            deviceConnection.wsConnection.onmessage = null;
+            deviceConnection.wsConnection.onerror = null;
+            deviceConnection.wsConnection.onclose = null;
+            deviceConnection.wsConnection.close();
+          } catch (error) {
+            console.warn(`关闭设备 ${deviceId} 旧WebSocket连接出错:`, error);
+          }
+        }
+        
+        // 创建新的WebSocket连接
+        try {
+          console.log(`创建设备 ${deviceId} 新的WebSocket连接`);
+          const ws = new WebSocket(wsUrl);
+          (ws as any).isClosed = false;
+          (ws as any).deviceId = deviceId;
+          deviceConnection.wsConnection = ws;
+          
+          // 设置WebSocket事件处理
+          ws.binaryType = 'arraybuffer';
+          
+          // 设置连接超时
+          const connectionTimeout = setTimeout(() => {
+            if (!isComponentMounted.value || !isComponentActive.value || (ws as any).isClosed) return;
+            
+            if (ws.readyState !== WebSocket.OPEN) {
+              console.error(`设备 ${deviceId} WebSocket连接超时`);
+              deviceConnection.streamError = 'WebSocket连接超时';
+              (ws as any).isClosed = true;
+              ws.close();
+            }
+          }, 15000);
+          
+          ws.onopen = () => {
+            if (!isComponentMounted.value || !isComponentActive.value || (ws as any).isClosed) return;
+            console.log(`设备 ${deviceId} WebSocket连接成功`);
+            clearTimeout(connectionTimeout);
+            deviceConnection.streamError = null;
+          };
+          
+          // 数据接收超时检查器
+          let dataReceived = false;
+          const checkDataTimer = setTimeout(() => {
+            if (!isComponentMounted.value || !isComponentActive.value || (ws as any).isClosed) return;
+            
+            if (!dataReceived) {
+              console.warn(`设备 ${deviceId} WebSocket连接成功但10秒内没有收到数据`);
+              deviceConnection.streamError = '未收到视频数据，请检查设备串流状态';
+              
+              // 尝试自动重连
+              stopOtherDeviceStream(deviceId).catch(console.error).finally(() => {
+                if (!isComponentMounted.value || !isComponentActive.value) return;
+                
+                setTimeout(() => {
+                  if (!isComponentMounted.value || !isComponentActive.value) return;
+                  
+                  if (device.status === 'online') {
+                    console.log(`尝试自动重新连接设备 ${deviceId}...`);
+                    startOtherDeviceStream(deviceId);
+                  }
+                }, 3000);
+              });
+            }
+          }, 10000);
+          
+          ws.onmessage = (event) => {
+            if ((ws as any).isClosed) return;
+            
+            if (event.data instanceof ArrayBuffer) {
+              if (!isComponentMounted.value || !isComponentActive.value) return;
+              
+              // 标记已收到视频数据
+              if (!deviceConnection.videoFrameReceived) {
+                deviceConnection.videoFrameReceived = true;
+                console.log(`设备 ${deviceId} 收到首帧视频数据`);
+              }
+              
+              // 标记已收到数据
+              if (!dataReceived) {
+                dataReceived = true;
+                clearTimeout(checkDataTimer);
+              }
+              
+              // 处理视频数据
+              const data = new Uint8Array(event.data);
+              
+              try {
+                if (!deviceConnection.player) return;
+                (deviceConnection.player as any).pushFrame(data);
+              } catch (error) {
+                console.error(`设备 ${deviceId} 处理视频帧出错:`, error);
+              }
+            }
+          };
+          
+          ws.onerror = (event) => {
+            if (!isComponentMounted.value || !isComponentActive.value || (ws as any).isClosed) return;
+            
+            console.error(`设备 ${deviceId} WebSocket错误:`, event);
+            clearTimeout(connectionTimeout);
+            clearTimeout(checkDataTimer);
+            deviceConnection.streamError = 'WebSocket连接错误';
+            deviceConnection.videoFrameReceived = false;
+            stopOtherDeviceStream(deviceId).catch(console.error);
+          };
+          
+          ws.onclose = () => {
+            if (!isComponentMounted.value || !isComponentActive.value) return;
+            
+            console.log(`设备 ${deviceId} WebSocket连接关闭`);
+            clearTimeout(connectionTimeout);
+            clearTimeout(checkDataTimer);
+            (ws as any).isClosed = true;
+            deviceConnection.streamEnabled = false;
+            deviceConnection.videoFrameReceived = false;
+            
+            if (deviceConnection.streamEnabled && !deviceConnection.streamError) {
+              deviceConnection.streamError = 'WebSocket连接已关闭';
+            }
+          };
+        } catch (error) {
+          console.error(`创建设备 ${deviceId} WebSocket连接失败:`, error);
+          deviceConnection.streamError = '创建WebSocket连接失败';
+        }
+      } catch (error) {
+        console.error(`设备 ${deviceId} 创建或初始化播放器失败:`, error);
+        deviceConnection.streamError = '视频播放器初始化失败';
+        deviceConnection.player = null;
+      }
+    } else {
+      deviceConnection.streamError = response.message || '启动串流失败';
+    }
+  } catch (error) {
+    console.error(`启动设备 ${deviceId} 串流失败:`, error);
+    if (isComponentMounted.value) {
+      deviceConnection.streamError = error instanceof Error ? error.message : '未知错误';
+    }
+  }
+};
+
+// 停止从设备视频流
+const stopOtherDeviceStream = async (deviceId: string) => {
+  console.log(`开始停止设备 ${deviceId} 视频流`);
+  
+  const deviceConnection = otherDeviceConnections.value[deviceId];
+  if (!deviceConnection) return;
+  
+  // 重置视频帧接收状态
+  deviceConnection.videoFrameReceived = false;
+  
+  // 标记WebSocket为已关闭
+  if (deviceConnection.wsConnection) {
+    (deviceConnection.wsConnection as any).isClosed = true;
+  }
+  
+  // 关闭WebSocket连接
+  if (deviceConnection.wsConnection) {
+    try {
+      console.log(`关闭设备 ${deviceId} WebSocket连接`);
+      deviceConnection.wsConnection.onmessage = null;
+      deviceConnection.wsConnection.onerror = null;
+      deviceConnection.wsConnection.onclose = null;
+      deviceConnection.wsConnection.close();
+    } catch (e) {
+      console.warn(`关闭设备 ${deviceId} WebSocket连接出错:`, e);
+    }
+    deviceConnection.wsConnection = null;
+  }
+  
+  // 停止播放器
+  if (deviceConnection.player) {
+    try {
+      console.log(`停止设备 ${deviceId} WebCodecsPlayer`);
+      deviceConnection.player.stop();
+    } catch (e) {
+      console.warn(`停止设备 ${deviceId} 播放器出错:`, e);
+    }
+    deviceConnection.player = null;
+  }
+  
+  // 调用后端接口停止串流
+  try {
+    console.log(`调用后端API停止设备 ${deviceId} 串流`);
+    await stopDeviceStream(deviceId);
+  } catch (error) {
+    console.error(`停止设备 ${deviceId} 串流失败:`, error);
+  }
+  
+  deviceConnection.streamEnabled = false;
+  console.log(`设备 ${deviceId} 视频流停止完成`);
+};
+
+// 获取从设备视频帧接收状态
+const getOtherDeviceVideoReceived = (deviceId: string): boolean => {
+  if (!otherDeviceConnections.value[deviceId]) {
+    return false;
+  }
+  return !!otherDeviceConnections.value[deviceId].videoFrameReceived;
+};
+
+// 获取从设备视频流错误状态
+const getOtherDeviceStreamError = (deviceId: string): string | null => {
+  if (!otherDeviceConnections.value[deviceId]) {
+    return null;
+  }
+  return otherDeviceConnections.value[deviceId].streamError;
+};
+
+// 重试从设备视频流
+const retryOtherDeviceStream = async (deviceId: string) => {
+  console.log(`重试设备 ${deviceId} 视频流`);
+  
+  // 先停止当前流
+  await stopOtherDeviceStream(deviceId);
+  
+  // 重新启动流
+  await startOtherDeviceStream(deviceId);
+};
 </script>
 
 <style scoped>
-.player-container {
+.player-container,
+.other-device-player-container {
   width: 100%;
   height: 100%;
   background-color: #000;
   z-index: 1;
+  position: relative;
 }
 
 .stream-error,
