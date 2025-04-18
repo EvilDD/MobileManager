@@ -51,13 +51,6 @@
               <span>设备离线</span>
             </div>
           </div>
-          
-          <!-- 未启动串流但设备在线状态 -->
-          <div v-else-if="!streamEnabled" class="stream-inactive">
-            <el-button type="primary" @click="toggleStream(true)" :disabled="mainDevice.status !== 'online'">
-              启动视频流
-            </el-button>
-          </div>
         </div>
         <div class="device-info">
           <div class="device-id">ID: {{ mainDevice.deviceId }}</div>
