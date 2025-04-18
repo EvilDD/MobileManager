@@ -49,20 +49,37 @@ export class WebCodecsPlayer {
     
     // 创建 canvas 元素
     this.canvas = document.createElement('canvas');
-    this.canvas.style.width = '100%';
-    this.canvas.style.height = '100%';
-    this.canvas.style.display = 'block';
-    this.canvas.style.position = 'absolute';
-    this.canvas.style.left = '0';
-    this.canvas.style.top = '0';
-    this.canvas.style.transformOrigin = '0 0';
+    
+    // 设置canvas样式
+    const canvasStyle = {
+      position: 'absolute',
+      left: '0',
+      top: '0',
+      width: '100%',
+      height: '100%',
+      display: 'block',
+      objectFit: 'contain'
+    };
+    
+    // 应用样式
+    Object.assign(this.canvas.style, canvasStyle);
+    
+    // 添加到父容器
     this.parent.appendChild(this.canvas);
     
     // 获取绘图上下文
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas.getContext('2d', {
+      alpha: false,
+      desynchronized: true  // 启用非同步绘制以减少延迟
+    });
     
     // 处理窗口大小调整事件
     window.addEventListener('resize', this.handleResize.bind(this));
+    
+    // 立即调整大小
+    if (this.videoWidth > 0 && this.videoHeight > 0) {
+      this.handleResize();
+    }
   }
 
   /**
@@ -73,47 +90,32 @@ export class WebCodecsPlayer {
       // 获取设备像素比
       const dpr = window.devicePixelRatio || 1;
       
-      // 获取父容器尺寸
-      let parentWidth = this.parent?.clientWidth || window.innerWidth;
-      let parentHeight = this.parent?.clientHeight || window.innerHeight;
-      
-      // 计算适合的显示尺寸，保持宽高比
-      let displayWidth = this.videoWidth;
-      let displayHeight = this.videoHeight;
-      
-      // 计算缩放因子
-      const scaleX = parentWidth / displayWidth;
-      const scaleY = parentHeight / displayHeight;
-      const scale = Math.min(scaleX, scaleY);
-      
-      // 应用缩放
-      displayWidth = Math.floor(displayWidth * scale);
-      displayHeight = Math.floor(displayHeight * scale);
-      
-      // 计算Canvas的物理像素尺寸
-      const canvasWidth = Math.round(displayWidth * dpr);
-      const canvasHeight = Math.round(displayHeight * dpr);
+      // 计算实际显示尺寸 - 使用父容器的尺寸，这里不需要缩放计算
+      // 直接使用父容器的尺寸
+      const displayWidth = this.parent?.clientWidth || window.innerWidth;
+      const displayHeight = this.parent?.clientHeight || window.innerHeight;
       
       console.log('视频原始尺寸:', { width: this.videoWidth, height: this.videoHeight });
-      console.log('父容器尺寸:', { width: parentWidth, height: parentHeight });
-      console.log('应用的缩放因子:', scale);
-      console.log('显示尺寸:', { displayWidth, displayHeight });
+      console.log('父容器尺寸:', { width: displayWidth, height: displayHeight });
+      console.log('设备像素比:', dpr);
+      
+      // 计算Canvas的物理像素尺寸 - 使用视频的原始尺寸
+      const canvasWidth = this.videoWidth;
+      const canvasHeight = this.videoHeight;
+      
       console.log('Canvas物理像素尺寸:', { canvasWidth, canvasHeight });
       
       // 设置Canvas的物理像素尺寸
       this.canvas.width = canvasWidth;
       this.canvas.height = canvasHeight;
       
-      // 设置Canvas的CSS显示尺寸
+      // 设置Canvas的CSS显示尺寸 - 使用父容器的尺寸
       this.canvas.style.width = `${displayWidth}px`;
       this.canvas.style.height = `${displayHeight}px`;
       
-      // 设置Canvas的缩放以匹配设备像素比
+      // 重置Canvas上下文的变换
       if (this.ctx) {
-        // 重置变换
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        // 应用设备像素比缩放
-        this.ctx.scale(dpr, dpr);
       }
       
       // 如果父元素存在，也更新其尺寸
@@ -236,7 +238,24 @@ export class WebCodecsPlayer {
     // 直接绘制到canvas
     if (this.ctx && this.canvas) {
       try {
-        this.ctx.drawImage(frame, 0, 0);
+        // 获取视频尺寸
+        if (this.videoWidth === 0 || this.videoHeight === 0) {
+          this.videoWidth = frame.displayWidth;
+          this.videoHeight = frame.displayHeight;
+          this.handleResize();
+        }
+        
+        // 清除canvas
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // 绘制视频帧，缩放到整个canvas区域
+        this.ctx.drawImage(
+          frame, 
+          0, 
+          0, 
+          this.canvas.width, 
+          this.canvas.height
+        );
       } catch (e) {
         console.error('Canvas drawImage 错误:', e);
       }
