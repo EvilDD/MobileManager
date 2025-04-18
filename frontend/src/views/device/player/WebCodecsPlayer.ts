@@ -26,6 +26,8 @@ export class WebCodecsPlayer {
   private bufferedSPS = false;
   private bufferedPPS = false;
   private codecString = 'avc1.640028'; // 默认编解码器字符串
+  // 存储绑定的resize事件处理函数引用
+  private resizeHandler: (() => void) | null = null;
 
   // NAL 单元类型常量
   private readonly NAL_TYPE_SPS = 7;
@@ -73,8 +75,11 @@ export class WebCodecsPlayer {
       desynchronized: true  // 启用非同步绘制以减少延迟
     });
     
+    // 创建绑定的resize处理函数并保存引用
+    this.resizeHandler = this.handleResize.bind(this);
+    
     // 处理窗口大小调整事件
-    window.addEventListener('resize', this.handleResize.bind(this));
+    window.addEventListener('resize', this.resizeHandler);
     
     // 立即调整大小
     if (this.videoWidth > 0 && this.videoHeight > 0) {
@@ -232,7 +237,7 @@ export class WebCodecsPlayer {
       this.frameRate = this.frameCounter;
       this.frameCounter = 0;
       this.lastFrameTime = now;
-      console.log(`当前帧率: ${this.frameRate} FPS, 待处理帧: ${this.pendingFrames}`);
+      // console.log(`当前帧率: ${this.frameRate} FPS, 待处理帧: ${this.pendingFrames}`);
     }
     
     // 直接绘制到canvas
@@ -402,15 +407,31 @@ export class WebCodecsPlayer {
     this.bufferedPPS = false;
     this.buffer = undefined;
     
-    // 移除 canvas
-    if (this.canvas && this.parent) {
-      this.parent.removeChild(this.canvas);
-      this.canvas = null;
-      this.ctx = null;
+    // 移除 canvas - 安全地处理DOM操作
+    try {
+      if (this.canvas) {
+        if (this.parent && this.canvas.parentNode === this.parent) {
+          this.parent.removeChild(this.canvas);
+        } else if (this.canvas.parentNode) {
+          // 如果canvas有父节点但不是我们期望的parent
+          this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+        this.ctx = null;
+      }
+    } catch (e) {
+      console.warn('清理canvas元素时出错:', e);
     }
     
     // 移除事件监听器
-    window.removeEventListener('resize', this.handleResize.bind(this));
+    if (this.resizeHandler) {
+      try {
+        window.removeEventListener('resize', this.resizeHandler);
+        this.resizeHandler = null;
+      } catch (e) {
+        console.warn('移除事件监听器时出错:', e);
+      }
+    }
     
     console.log('播放器停止');
   }
