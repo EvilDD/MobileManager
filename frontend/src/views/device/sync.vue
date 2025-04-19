@@ -308,9 +308,71 @@ const sendTouchEvent = (action: number, x: number, y: number) => {
   try {
     // 发送事件到后端
     wsConnection.value.send(JSON.stringify(touchEvent));
+    
+    // 如果操作同步已开启，也发送给从设备
+    if (syncEnabled.value) {
+      sendTouchEventToOtherDevices(action, x, y);
+    }
   } catch (error) {
     console.error('发送触摸事件失败:', error);
   }
+};
+
+// 向从设备发送触摸事件
+const sendTouchEventToOtherDevices = (action: number, x: number, y: number) => {
+  // 遍历所有从设备连接
+  Object.keys(otherDeviceConnections.value).forEach(deviceId => {
+    const deviceConnection = otherDeviceConnections.value[deviceId];
+    
+    // 检查WebSocket连接是否可用
+    if (!deviceConnection.wsConnection || 
+        deviceConnection.wsConnection.readyState !== WebSocket.OPEN) {
+      console.warn(`从设备 ${deviceId} WebSocket连接不可用，无法发送触摸事件`);
+      return;
+    }
+    
+    try {
+      // 获取从设备的实际屏幕分辨率
+      let targetDeviceWidth = sourceScreen.value.width;  // 默认使用与主设备相同的尺寸
+      let targetDeviceHeight = sourceScreen.value.height;
+      
+      // 如果从设备的player中有记录视频尺寸，使用实际尺寸
+      if (deviceConnection.player) {
+        const player = deviceConnection.player as any;
+        if (player.videoWidth && player.videoHeight) {
+          targetDeviceWidth = player.videoWidth;
+          targetDeviceHeight = player.videoHeight;
+        }
+      }
+      
+      const scaleX = targetDeviceWidth / sourceScreen.value.width;
+      const scaleY = targetDeviceHeight / sourceScreen.value.height;
+
+      const targetX = Math.round(x * scaleX);
+      const targetY = Math.round(y * scaleY);
+      
+      // 创建触摸事件消息对象
+      const touchEvent = {
+        type: "touch",  
+        data: {
+          action: action,
+          x: targetX,
+          y: targetY
+        }
+      };
+      
+      // 发送事件到从设备
+      deviceConnection.wsConnection.send(JSON.stringify(touchEvent));
+      console.log(`已同步触摸事件到从设备 ${deviceId}:`, {
+        action,
+        原始坐标: { x, y },
+        目标坐标: { x: targetX, y: targetY },
+        目标设备尺寸: { width: targetDeviceWidth, height: targetDeviceHeight }
+      });
+    } catch (error) {
+      console.error(`发送触摸事件到从设备 ${deviceId} 失败:`, error);
+    }
+  });
 };
 
 // 处理鼠标按下事件
@@ -450,9 +512,14 @@ const handleTouchEnd = (event: TouchEvent) => {
 // 操作同步处理
 const handleSyncOperation = (enabled: boolean) => {
   syncEnabled.value = enabled;
-  // 预留的操作同步方法，暂时只打印信息
+  // 记录操作同步状态
   console.log('操作同步状态:', enabled);
-  ElMessage.info(`操作同步${enabled ? '开启' : '关闭'}，功能待实现`);
+  
+  if (enabled) {
+    ElMessage.success('操作同步已开启，主设备的操作将同步到从设备');
+  } else {
+    ElMessage.info('操作同步已关闭');
+  }
 };
 
 // 启动/停止视频流
