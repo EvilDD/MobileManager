@@ -6,8 +6,9 @@
         <div class="device-header">
           <span class="device-name">{{ mainDevice.name }}</span>
           <div class="actions">
-            <!-- 操作同步开关 -->
+            <!-- 操作同步开关 - 只有主设备才显示 -->
             <el-switch
+              v-if="isMainDevice"
               v-model="syncEnabled"
               active-text="操作同步"
               @change="handleSyncOperation"
@@ -154,9 +155,9 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="goToHome">主页</el-dropdown-item>
-                  <el-dropdown-item @click="goBack">返回</el-dropdown-item>
-                  <el-dropdown-item @click="openOverview">任务管理</el-dropdown-item>
+                  <el-dropdown-item @click="handleOtherDeviceAction(device, 'home')">主页</el-dropdown-item>
+                  <el-dropdown-item @click="handleOtherDeviceAction(device, 'back')">返回</el-dropdown-item>
+                  <el-dropdown-item @click="handleOtherDeviceAction(device, 'overview')">任务管理</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -227,6 +228,12 @@ const isComponentActive = ref(true);
 
 // 操作同步开关
 const syncEnabled = ref(true);
+
+// 判断当前是否为主设备
+const isMainDevice = computed(() => {
+  if (!mainDevice.value) return false;
+  return mainDevice.value.isMainDevice === true;
+});
 
 // 视频流接收状态
 const videoFrameReceived = ref(false);
@@ -351,8 +358,8 @@ const sendTouchEvent = (action: number, x: number, y: number) => {
     // 发送事件到后端
     wsConnection.value.send(JSON.stringify(touchEvent));
     
-    // 如果操作同步已开启，也发送给从设备
-    if (syncEnabled.value) {
+    // 只有在主设备上且操作同步已开启时，才发送给从设备
+    if (syncEnabled.value && isMainDevice.value) {
       sendTouchEventToOtherDevices(action, x, y);
     }
   } catch (error) {
@@ -559,7 +566,14 @@ const handleSyncOperation = (enabled: boolean) => {
   // 记录操作同步状态
   console.log('操作同步状态:', enabled);
   
-  if (enabled) {
+  // 只有主设备可以开启操作同步
+  if (!isMainDevice.value && enabled) {
+    ElMessage.warning('只有主设备才能开启操作同步');
+    syncEnabled.value = false;
+    return;
+  }
+  
+  if (enabled && isMainDevice.value) {
     ElMessage.success('操作同步已开启，主设备的触摸、Home、Back和Overview操作将同步到从设备');
     
     // 如果有从设备在线，显示更详细的提示
@@ -570,7 +584,7 @@ const handleSyncOperation = (enabled: boolean) => {
       console.log('当前没有在线的从设备可接收同步操作');
     }
   } else {
-    ElMessage.info('操作同步已关闭，操作将只发送到主设备');
+    ElMessage.info('操作同步已关闭，操作将只发送到当前设备');
   }
 };
 
@@ -1583,8 +1597,8 @@ const sendKeyCodeEvent = (action: number, keycode: number, repeat: number = 0, m
     // 发送事件到后端
     wsConnection.value.send(JSON.stringify(keyEvent));
     
-    // 如果操作同步已开启，也发送给从设备
-    if (syncEnabled.value) {
+    // 只有在主设备上且操作同步已开启时，才发送给从设备
+    if (syncEnabled.value && isMainDevice.value) {
       sendKeyCodeEventToOtherDevices(action, keycode, repeat, metaState);
     }
   } catch (error) {
@@ -1640,17 +1654,17 @@ const sendNavigationCommand = (commandType: string) => {
       type: commandType  // "home", "back", 或 "overview"
     };
     
-    // 发送到主设备
+    // 发送到当前设备
     if (wsConnection.value && wsConnection.value.readyState === WebSocket.OPEN) {
       wsConnection.value.send(JSON.stringify(commandEvent));
-      console.log(`已发送 ${commandType} 命令到主设备`);
+      console.log(`已发送 ${commandType} 命令到当前设备`);
     } else {
       console.warn('WebSocket连接不可用，无法发送命令');
       return;
     }
     
-    // 如果操作同步已开启，也发送给从设备
-    if (syncEnabled.value) {
+    // 只有在主设备上且操作同步已开启时，才发送给从设备
+    if (syncEnabled.value && isMainDevice.value) {
       Object.keys(otherDeviceConnections.value).forEach(deviceId => {
         const deviceConnection = otherDeviceConnections.value[deviceId];
         
@@ -1675,19 +1689,6 @@ const goToHome = () => {
   if (mainDevice.value && mainDevice.value.status === 'online') {
     // 方法1：发送直接的HOME命令 (推荐)
     sendNavigationCommand('home');
-    
-    // 方法2：使用keycode按下释放操作 (备选)
-    /*
-    // 发送按下事件
-    sendKeyCodeEvent(KEY_ACTION.DOWN, KEY_CODE.HOME);
-    
-    // 短暂延迟后发送释放事件
-    setTimeout(() => {
-      sendKeyCodeEvent(KEY_ACTION.UP, KEY_CODE.HOME);
-    }, 100);
-    
-    ElMessage.success('已发送HOME键命令');
-    */
   } else {
     ElMessage.warning('主设备不在线，无法执行操作');
   }
@@ -1698,19 +1699,6 @@ const goBack = () => {
   if (mainDevice.value && mainDevice.value.status === 'online') {
     // 方法1：发送直接的BACK命令 (推荐)
     sendNavigationCommand('back');
-    
-    // 方法2：使用keycode按下释放操作 (备选)
-    /*
-    // 发送按下事件
-    sendKeyCodeEvent(KEY_ACTION.DOWN, KEY_CODE.BACK);
-    
-    // 短暂延迟后发送释放事件
-    setTimeout(() => {
-      sendKeyCodeEvent(KEY_ACTION.UP, KEY_CODE.BACK);
-    }, 100);
-    
-    ElMessage.success('已发送BACK键命令');
-    */
   } else {
     ElMessage.warning('主设备不在线，无法执行操作');
   }
@@ -1721,21 +1709,39 @@ const openOverview = () => {
   if (mainDevice.value && mainDevice.value.status === 'online') {
     // 方法1：发送直接的OVERVIEW命令 (推荐)
     sendNavigationCommand('overview');
-    
-    // 方法2：使用keycode按下释放操作 (备选)
-    /*
-    // 发送按下事件
-    sendKeyCodeEvent(KEY_ACTION.DOWN, KEY_CODE.APP_SWITCH);
-    
-    // 短暂延迟后发送释放事件
-    setTimeout(() => {
-      sendKeyCodeEvent(KEY_ACTION.UP, KEY_CODE.APP_SWITCH);
-    }, 100);
-    
-    ElMessage.success('已发送OVERVIEW键命令');
-    */
   } else {
     ElMessage.warning('主设备不在线，无法执行操作');
+  }
+};
+
+// 从设备上的操作按钮方法
+const handleOtherDeviceAction = (device: Device, action: string) => {
+  if (device.status !== 'online') {
+    ElMessage.warning(`设备${device.name}不在线，无法执行操作`);
+    return;
+  }
+  
+  // 获取该设备的WebSocket连接
+  const deviceConnection = otherDeviceConnections.value[device.deviceId];
+  if (!deviceConnection || !deviceConnection.wsConnection || 
+      deviceConnection.wsConnection.readyState !== WebSocket.OPEN) {
+    ElMessage.warning(`设备${device.name}连接不可用，无法执行操作`);
+    return;
+  }
+  
+  // 创建命令对象
+  const commandEvent = {
+    type: action // "home", "back", 或 "overview"
+  };
+  
+  try {
+    // 只发送到当前操作的设备
+    deviceConnection.wsConnection.send(JSON.stringify(commandEvent));
+    console.log(`已发送 ${action} 命令到设备 ${device.name}`);
+    ElMessage.success(`已发送${action === 'home' ? '主页' : action === 'back' ? '返回' : '任务管理'}键命令到设备 ${device.name}`);
+  } catch (error) {
+    console.error(`发送 ${action} 命令到设备 ${device.deviceId} 失败:`, error);
+    ElMessage.error(`发送命令失败: ${error}`);
   }
 };
 
