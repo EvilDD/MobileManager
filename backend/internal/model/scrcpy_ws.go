@@ -33,6 +33,14 @@ const (
 
 	// 按钮标识
 	BUTTON_PRIMARY = 1 << 0 // 左键
+
+	// 键码常量 - Android KeyEvent
+	KEYCODE_HOME        = 3
+	KEYCODE_BACK        = 4
+	KEYCODE_POWER       = 26
+	KEYCODE_VOLUME_UP   = 24
+	KEYCODE_VOLUME_DOWN = 25
+	KEYCODE_APP_SWITCH  = 187 // Overview按钮
 )
 
 // DeviceConnection 存储设备连接信息
@@ -72,6 +80,14 @@ type ClickEvent struct {
 	X        int `json:"x"`
 	Y        int `json:"y"`
 	Duration int `json:"duration"` // 点击持续时间(毫秒)
+}
+
+// KeyCodeControlMessage 按键码控制消息结构
+type KeyCodeControlMessage struct {
+	Action    int `json:"action"`    // 按键动作: 0-按下, 1-抬起
+	KeyCode   int `json:"keycode"`   // Android键码
+	Repeat    int `json:"repeat"`    // 重复次数
+	MetaState int `json:"metaState"` // 修饰键状态
 }
 
 // VideoSettings 视频设置结构

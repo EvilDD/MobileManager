@@ -75,6 +75,60 @@ func (s *ScrcpyService) sendVideoSettings(ctx context.Context, tcpConn net.Conn,
 		"发送帧元数据:", settings.SendFrameMeta)
 }
 
+// sendKeyCodeEvent 发送按键控制事件
+func (s *ScrcpyService) sendKeyCodeEvent(ctx context.Context, tcpConn net.Conn, message model.KeyCodeControlMessage) {
+	// 创建按键控制消息
+	buffer := make([]byte, 14) // 总大小 = 1 + 1 + 4 + 4 + 4 = 14字节
+
+	// 设置消息类型 (1字节)
+	buffer[0] = model.TYPE_INJECT_KEYCODE
+
+	// 设置动作类型 (1字节): 0-按下, 1-抬起
+	buffer[1] = byte(message.Action)
+
+	// 写入键码 (4字节)
+	binary.BigEndian.PutUint32(buffer[2:6], uint32(message.KeyCode))
+
+	// 写入重复次数 (4字节)
+	binary.BigEndian.PutUint32(buffer[6:10], uint32(message.Repeat))
+
+	// 写入元数据状态 (4字节)
+	binary.BigEndian.PutUint32(buffer[10:14], uint32(message.MetaState))
+
+	// 发送消息
+	_, err := tcpConn.Write(buffer)
+	if err != nil {
+		glog.Error(ctx, "发送按键事件失败:", err)
+		return
+	}
+
+	actionName := "按下"
+	if message.Action == model.ACTION_UP {
+		actionName = "抬起"
+	}
+
+	keyCodeName := "未知"
+	switch message.KeyCode {
+	case model.KEYCODE_HOME:
+		keyCodeName = "HOME"
+	case model.KEYCODE_BACK:
+		keyCodeName = "BACK"
+	case model.KEYCODE_APP_SWITCH:
+		keyCodeName = "APP_SWITCH(Overview)"
+	case model.KEYCODE_POWER:
+		keyCodeName = "POWER"
+	case model.KEYCODE_VOLUME_UP:
+		keyCodeName = "VOLUME_UP"
+	case model.KEYCODE_VOLUME_DOWN:
+		keyCodeName = "VOLUME_DOWN"
+	}
+
+	glog.Info(ctx, "按键事件已发送",
+		"类型:", actionName,
+		"键码:", message.KeyCode,
+		"键名:", keyCodeName)
+}
+
 // sendTouchEvent 发送触摸事件
 func (s *ScrcpyService) sendTouchEvent(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, action, x, y int) {
 	// 创建触摸事件消息

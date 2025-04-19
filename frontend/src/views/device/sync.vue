@@ -85,7 +85,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item @click="goToHome">主页</el-dropdown-item>
                   <el-dropdown-item @click="goBack">返回</el-dropdown-item>
-                  <el-dropdown-item @click="clearTasks">清除任务</el-dropdown-item>
+                  <el-dropdown-item @click="openOverview">任务管理</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -156,7 +156,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item @click="goToHome">主页</el-dropdown-item>
                   <el-dropdown-item @click="goBack">返回</el-dropdown-item>
-                  <el-dropdown-item @click="clearTasks">清除任务</el-dropdown-item>
+                  <el-dropdown-item @click="openOverview">任务管理</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -242,6 +242,19 @@ const TOUCH_ACTION = {
   DOWN: 0,
   UP: 1,
   MOVE: 2
+};
+
+// 按键操作常量，与后端保持一致
+const KEY_ACTION = {
+  DOWN: 0,
+  UP: 1
+};
+
+// 按键编码常量，与后端保持一致
+const KEY_CODE = {
+  HOME: 3,        // 主页键
+  BACK: 4,        // 返回键
+  APP_SWITCH: 187 // 最近任务键(Overview)
 };
 
 // 源坐标和目标坐标尺寸
@@ -547,9 +560,17 @@ const handleSyncOperation = (enabled: boolean) => {
   console.log('操作同步状态:', enabled);
   
   if (enabled) {
-    ElMessage.success('操作同步已开启，主设备的操作将同步到从设备');
+    ElMessage.success('操作同步已开启，主设备的触摸、Home、Back和Overview操作将同步到从设备');
+    
+    // 如果有从设备在线，显示更详细的提示
+    const onlineSlaveDevices = otherDevices.value.filter(d => d.status === 'online').length;
+    if (onlineSlaveDevices > 0) {
+      console.log(`当前有 ${onlineSlaveDevices} 台从设备将接收同步操作`);
+    } else {
+      console.log('当前没有在线的从设备可接收同步操作');
+    }
   } else {
-    ElMessage.info('操作同步已关闭');
+    ElMessage.info('操作同步已关闭，操作将只发送到主设备');
   }
 };
 
@@ -1537,47 +1558,187 @@ const handleInitialInfo = (data: any) => {
   }
 };
 
+// 发送按键控制事件到主设备
+const sendKeyCodeEvent = (action: number, keycode: number, repeat: number = 0, metaState: number = 0) => {
+  // 确保WebSocket连接可用
+  if (!wsConnection.value || wsConnection.value.readyState !== WebSocket.OPEN) {
+    console.warn('WebSocket连接不可用，无法发送按键事件');
+    return;
+  }
+  
+  // 创建按键事件消息对象
+  const keyEvent = {
+    type: "keycode",  
+    data: {
+      action: action,
+      keycode: keycode,
+      repeat: repeat,
+      metaState: metaState
+    }
+  };
+
+  console.log('发送按键事件:', keyEvent);
+
+  try {
+    // 发送事件到后端
+    wsConnection.value.send(JSON.stringify(keyEvent));
+    
+    // 如果操作同步已开启，也发送给从设备
+    if (syncEnabled.value) {
+      sendKeyCodeEventToOtherDevices(action, keycode, repeat, metaState);
+    }
+  } catch (error) {
+    console.error('发送按键事件失败:', error);
+  }
+};
+
+// 向从设备发送按键事件
+const sendKeyCodeEventToOtherDevices = (action: number, keycode: number, repeat: number = 0, metaState: number = 0) => {
+  // 遍历所有从设备连接
+  Object.keys(otherDeviceConnections.value).forEach(deviceId => {
+    const deviceConnection = otherDeviceConnections.value[deviceId];
+    
+    // 检查WebSocket连接是否可用
+    if (!deviceConnection.wsConnection || 
+        deviceConnection.wsConnection.readyState !== WebSocket.OPEN) {
+      console.warn(`从设备 ${deviceId} WebSocket连接不可用，无法发送按键事件`);
+      return;
+    }
+    
+    try {
+      // 创建按键事件消息对象
+      const keyEvent = {
+        type: "keycode",  
+        data: {
+          action: action,
+          keycode: keycode,
+          repeat: repeat,
+          metaState: metaState
+        }
+      };
+      
+      // 发送事件到从设备
+      deviceConnection.wsConnection.send(JSON.stringify(keyEvent));
+      console.log(`已同步按键事件到从设备 ${deviceId}:`, keyEvent);
+    } catch (error) {
+      console.error(`发送按键事件到从设备 ${deviceId} 失败:`, error);
+    }
+  });
+};
+
+// 发送特定的导航按键命令(Home,Back,Overview)
+const sendNavigationCommand = (commandType: string) => {
+  // 检查主设备是否在线
+  if (!mainDevice.value || mainDevice.value.status !== 'online') {
+    ElMessage.warning('主设备不在线，无法执行操作');
+    return;
+  }
+  
+  try {
+    // 创建快捷命令消息对象
+    const commandEvent = {
+      type: commandType  // "home", "back", 或 "overview"
+    };
+    
+    // 发送到主设备
+    if (wsConnection.value && wsConnection.value.readyState === WebSocket.OPEN) {
+      wsConnection.value.send(JSON.stringify(commandEvent));
+      console.log(`已发送 ${commandType} 命令到主设备`);
+    } else {
+      console.warn('WebSocket连接不可用，无法发送命令');
+      return;
+    }
+    
+    // 如果操作同步已开启，也发送给从设备
+    if (syncEnabled.value) {
+      Object.keys(otherDeviceConnections.value).forEach(deviceId => {
+        const deviceConnection = otherDeviceConnections.value[deviceId];
+        
+        if (deviceConnection.wsConnection && 
+            deviceConnection.wsConnection.readyState === WebSocket.OPEN) {
+          deviceConnection.wsConnection.send(JSON.stringify(commandEvent));
+          console.log(`已同步 ${commandType} 命令到从设备 ${deviceId}`);
+        }
+      });
+    }
+    
+    ElMessage.success(`已发送${commandType === 'home' ? '主页' : commandType === 'back' ? '返回' : '任务管理'}键命令`);
+  } catch (error) {
+    console.error(`发送 ${commandType} 命令失败:`, error);
+    ElMessage.error(`发送命令失败: ${error}`);
+  }
+};
+
 // 设备操作按钮相关方法
 const goToHome = () => {
-  // 发送触摸事件，模拟点击Home键
+  // 使用按键事件发送HOME键
   if (mainDevice.value && mainDevice.value.status === 'online') {
-    sendTouchEvent(TOUCH_ACTION.DOWN, sourceScreen.value.width / 2, sourceScreen.value.height - 50);
+    // 方法1：发送直接的HOME命令 (推荐)
+    sendNavigationCommand('home');
+    
+    // 方法2：使用keycode按下释放操作 (备选)
+    /*
+    // 发送按下事件
+    sendKeyCodeEvent(KEY_ACTION.DOWN, KEY_CODE.HOME);
+    
+    // 短暂延迟后发送释放事件
     setTimeout(() => {
-      sendTouchEvent(TOUCH_ACTION.UP, sourceScreen.value.width / 2, sourceScreen.value.height - 50);
+      sendKeyCodeEvent(KEY_ACTION.UP, KEY_CODE.HOME);
     }, 100);
-    ElMessage.success('已发送Home键命令');
+    
+    ElMessage.success('已发送HOME键命令');
+    */
   } else {
     ElMessage.warning('主设备不在线，无法执行操作');
   }
 };
 
 const goBack = () => {
-  // 发送触摸事件，模拟点击Back键
+  // 使用按键事件发送BACK键
   if (mainDevice.value && mainDevice.value.status === 'online') {
-    // 模拟点击屏幕底部的返回键位置
-    sendTouchEvent(TOUCH_ACTION.DOWN, 50, sourceScreen.value.height - 50);
+    // 方法1：发送直接的BACK命令 (推荐)
+    sendNavigationCommand('back');
+    
+    // 方法2：使用keycode按下释放操作 (备选)
+    /*
+    // 发送按下事件
+    sendKeyCodeEvent(KEY_ACTION.DOWN, KEY_CODE.BACK);
+    
+    // 短暂延迟后发送释放事件
     setTimeout(() => {
-      sendTouchEvent(TOUCH_ACTION.UP, 50, sourceScreen.value.height - 50);
+      sendKeyCodeEvent(KEY_ACTION.UP, KEY_CODE.BACK);
     }, 100);
-    ElMessage.success('已发送返回键命令');
+    
+    ElMessage.success('已发送BACK键命令');
+    */
   } else {
     ElMessage.warning('主设备不在线，无法执行操作');
   }
 };
 
-const clearTasks = () => {
-  // 发送触摸事件，模拟清除最近任务
+const openOverview = () => {
+  // 使用按键事件发送OVERVIEW键(APP_SWITCH)
   if (mainDevice.value && mainDevice.value.status === 'online') {
-    // 模拟点击屏幕底部的任务键位置
-    sendTouchEvent(TOUCH_ACTION.DOWN, sourceScreen.value.width - 50, sourceScreen.value.height - 50);
+    // 方法1：发送直接的OVERVIEW命令 (推荐)
+    sendNavigationCommand('overview');
+    
+    // 方法2：使用keycode按下释放操作 (备选)
+    /*
+    // 发送按下事件
+    sendKeyCodeEvent(KEY_ACTION.DOWN, KEY_CODE.APP_SWITCH);
+    
+    // 短暂延迟后发送释放事件
     setTimeout(() => {
-      sendTouchEvent(TOUCH_ACTION.UP, sourceScreen.value.width - 50, sourceScreen.value.height - 50);
+      sendKeyCodeEvent(KEY_ACTION.UP, KEY_CODE.APP_SWITCH);
     }, 100);
-    ElMessage.success('已发送清除任务命令');
+    
+    ElMessage.success('已发送OVERVIEW键命令');
+    */
   } else {
     ElMessage.warning('主设备不在线，无法执行操作');
   }
 };
+
 </script>
 
 <style scoped>

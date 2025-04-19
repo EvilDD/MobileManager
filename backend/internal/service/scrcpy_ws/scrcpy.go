@@ -461,6 +461,123 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 			touchEvent.Y = int(yVal)
 			s.sendTouchEvent(ctx, tcpConn, deviceConn, touchEvent.Action, touchEvent.X, touchEvent.Y)
 		}
+	case "keycode":
+		// 处理按键事件
+		var keyEvent model.KeyCodeControlMessage
+		if data, ok := command["data"].(map[string]interface{}); ok {
+			// 检查各字段是否存在
+			actionVal, actionOk := data["action"].(float64)
+			keyCodeVal, keyCodeOk := data["keycode"].(float64)
+
+			if !actionOk || !keyCodeOk {
+				glog.Error(ctx, "按键事件缺少必要字段或字段类型错误",
+					"action存在:", actionOk,
+					"keycode存在:", keyCodeOk)
+				return
+			}
+
+			keyEvent.Action = int(actionVal)
+			keyEvent.KeyCode = int(keyCodeVal)
+
+			// 这些字段是可选的
+			if repeatVal, repeatOk := data["repeat"].(float64); repeatOk {
+				keyEvent.Repeat = int(repeatVal)
+			}
+
+			if metaStateVal, metaStateOk := data["metaState"].(float64); metaStateOk {
+				keyEvent.MetaState = int(metaStateVal)
+			}
+
+			s.sendKeyCodeEvent(ctx, tcpConn, keyEvent)
+		}
+	case "home":
+		// 主页按钮快捷命令 - 按下然后释放
+		glog.Info(ctx, "触发HOME按键")
+
+		// 发送按下事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_DOWN,
+			KeyCode:   model.KEYCODE_HOME,
+			Repeat:    0,
+			MetaState: 0,
+		})
+
+		// 短暂延迟
+		time.Sleep(50 * time.Millisecond)
+
+		// 发送释放事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_UP,
+			KeyCode:   model.KEYCODE_HOME,
+			Repeat:    0,
+			MetaState: 0,
+		})
+	case "back":
+		// 返回按钮快捷命令
+		glog.Info(ctx, "触发BACK按键")
+
+		// 发送按下事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_DOWN,
+			KeyCode:   model.KEYCODE_BACK,
+			Repeat:    0,
+			MetaState: 0,
+		})
+
+		// 短暂延迟
+		time.Sleep(50 * time.Millisecond)
+
+		// 发送释放事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_UP,
+			KeyCode:   model.KEYCODE_BACK,
+			Repeat:    0,
+			MetaState: 0,
+		})
+	case "overview":
+		// 最近任务按钮快捷命令
+		glog.Info(ctx, "触发OVERVIEW按键")
+
+		// 发送按下事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_DOWN,
+			KeyCode:   model.KEYCODE_APP_SWITCH,
+			Repeat:    0,
+			MetaState: 0,
+		})
+
+		// 短暂延迟
+		time.Sleep(50 * time.Millisecond)
+
+		// 发送释放事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_UP,
+			KeyCode:   model.KEYCODE_APP_SWITCH,
+			Repeat:    0,
+			MetaState: 0,
+		})
+	case "power":
+		// 电源按钮快捷命令
+		glog.Info(ctx, "触发POWER按键")
+
+		// 发送按下事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_DOWN,
+			KeyCode:   model.KEYCODE_POWER,
+			Repeat:    0,
+			MetaState: 0,
+		})
+
+		// 短暂延迟
+		time.Sleep(50 * time.Millisecond)
+
+		// 发送释放事件
+		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+			Action:    model.ACTION_UP,
+			KeyCode:   model.KEYCODE_POWER,
+			Repeat:    0,
+			MetaState: 0,
+		})
 	case "click":
 		// 处理点击事件
 		var clickEvent model.ClickEvent
