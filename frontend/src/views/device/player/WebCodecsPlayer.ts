@@ -321,7 +321,7 @@ export class WebCodecsPlayer {
       // 检查是否为IDR帧
       const isIDR = nalType === this.NAL_TYPE_IDR;
       if (isIDR) {
-        console.log('收到IDR帧');
+        // console.log('收到IDR帧');
         this.keyFrameFound = true;
       }
       

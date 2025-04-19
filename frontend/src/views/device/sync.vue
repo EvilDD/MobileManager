@@ -197,7 +197,7 @@ const isComponentMounted = ref(true);
 const isComponentActive = ref(true);
 
 // 操作同步开关
-const syncEnabled = ref(false);
+const syncEnabled = ref(true);
 
 // 视频流接收状态
 const videoFrameReceived = ref(false);
@@ -350,7 +350,9 @@ const sendTouchEventToOtherDevices = (action: number, x: number, y: number) => {
 
       const targetX = Math.round(x * scaleX);
       const targetY = Math.round(y * scaleY);
-      
+
+      // const { x: targetX, y: targetY } = convertCoordinates(x, y);
+
       // 创建触摸事件消息对象
       const touchEvent = {
         type: "touch",  
@@ -363,12 +365,12 @@ const sendTouchEventToOtherDevices = (action: number, x: number, y: number) => {
       
       // 发送事件到从设备
       deviceConnection.wsConnection.send(JSON.stringify(touchEvent));
-      console.log(`已同步触摸事件到从设备 ${deviceId}:`, {
-        action,
-        原始坐标: { x, y },
-        目标坐标: { x: targetX, y: targetY },
-        目标设备尺寸: { width: targetDeviceWidth, height: targetDeviceHeight }
-      });
+      // console.log(`已同步触摸事件到从设备 ${deviceId}:`, {
+      //   action,
+      //   原始坐标: { x, y },
+      //   目标坐标: { x: targetX, y: targetY },
+      //   目标设备尺寸: { width: targetDeviceWidth, height: targetDeviceHeight }
+      // });
     } catch (error) {
       console.error(`发送触摸事件到从设备 ${deviceId} 失败:`, error);
     }
