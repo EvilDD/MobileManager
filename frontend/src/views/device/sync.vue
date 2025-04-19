@@ -13,6 +13,14 @@
               @change="handleSyncOperation"
               :disabled="streamLoading"
             />
+            <!-- 在线状态标签 -->
+            <el-tag 
+              :type="mainDevice.status === 'online' ? 'success' : 'danger'" 
+              size="small"
+              class="status-tag"
+            >
+              {{ mainDevice.status === 'online' ? '在线' : '离线' }}
+            </el-tag>
           </div>
         </div>
         <div class="device-screen">
@@ -65,15 +73,22 @@
             </div>
           </div>
         </div>
-        <div class="device-info">
+        <div class="device-footer">
           <div class="device-id">ID: {{ mainDevice.deviceId }}</div>
-          <div class="device-status">
-            <el-tag 
-              :type="mainDevice.status === 'online' ? 'success' : 'danger'" 
-              size="small"
-            >
-              {{ mainDevice.status === 'online' ? '在线' : '离线' }}
-            </el-tag>
+          <div class="device-actions">
+            <el-dropdown trigger="click">
+              <el-button type="primary" plain size="small">
+                操作
+                <el-icon class="el-icon--right"><arrow-down /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="goToHome">主页</el-dropdown-item>
+                  <el-dropdown-item @click="goBack">返回</el-dropdown-item>
+                  <el-dropdown-item @click="clearTasks">清除任务</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -86,6 +101,13 @@
       >
         <div class="device-header">
           <span class="device-name">{{ device.name }}</span>
+          <el-tag 
+            :type="device.status === 'online' ? 'success' : 'danger'" 
+            size="small"
+            class="status-tag"
+          >
+            {{ device.status === 'online' ? '在线' : '离线' }}
+          </el-tag>
         </div>
         <div class="device-screen">
           <!-- 视频流播放器容器 - 替换截图组件 -->
@@ -122,15 +144,22 @@
             </div>
           </div>
         </div>
-        <div class="device-info">
+        <div class="device-footer">
           <div class="device-id">ID: {{ device.deviceId }}</div>
-          <div class="device-status">
-            <el-tag 
-              :type="device.status === 'online' ? 'success' : 'danger'" 
-              size="small"
-            >
-              {{ device.status === 'online' ? '在线' : '离线' }}
-            </el-tag>
+          <div class="device-actions">
+            <el-dropdown trigger="click">
+              <el-button type="primary" plain size="small">
+                操作
+                <el-icon class="el-icon--right"><arrow-down /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="goToHome">主页</el-dropdown-item>
+                  <el-dropdown-item @click="goBack">返回</el-dropdown-item>
+                  <el-dropdown-item @click="clearTasks">清除任务</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -142,7 +171,7 @@
 import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick, onActivated, onDeactivated } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { WarningFilled, Loading } from '@element-plus/icons-vue';
+import { WarningFilled, Loading, ArrowDown } from '@element-plus/icons-vue';
 import { useCloudPhoneStore } from '@/store/modules/cloudphone';
 import type { Device } from '@/api/device';
 import { startDeviceStream, stopDeviceStream } from '@/api/device';
@@ -1507,6 +1536,48 @@ const handleInitialInfo = (data: any) => {
     updateScreenResolution(data.screenWidth, data.screenHeight);
   }
 };
+
+// 设备操作按钮相关方法
+const goToHome = () => {
+  // 发送触摸事件，模拟点击Home键
+  if (mainDevice.value && mainDevice.value.status === 'online') {
+    sendTouchEvent(TOUCH_ACTION.DOWN, sourceScreen.value.width / 2, sourceScreen.value.height - 50);
+    setTimeout(() => {
+      sendTouchEvent(TOUCH_ACTION.UP, sourceScreen.value.width / 2, sourceScreen.value.height - 50);
+    }, 100);
+    ElMessage.success('已发送Home键命令');
+  } else {
+    ElMessage.warning('主设备不在线，无法执行操作');
+  }
+};
+
+const goBack = () => {
+  // 发送触摸事件，模拟点击Back键
+  if (mainDevice.value && mainDevice.value.status === 'online') {
+    // 模拟点击屏幕底部的返回键位置
+    sendTouchEvent(TOUCH_ACTION.DOWN, 50, sourceScreen.value.height - 50);
+    setTimeout(() => {
+      sendTouchEvent(TOUCH_ACTION.UP, 50, sourceScreen.value.height - 50);
+    }, 100);
+    ElMessage.success('已发送返回键命令');
+  } else {
+    ElMessage.warning('主设备不在线，无法执行操作');
+  }
+};
+
+const clearTasks = () => {
+  // 发送触摸事件，模拟清除最近任务
+  if (mainDevice.value && mainDevice.value.status === 'online') {
+    // 模拟点击屏幕底部的任务键位置
+    sendTouchEvent(TOUCH_ACTION.DOWN, sourceScreen.value.width - 50, sourceScreen.value.height - 50);
+    setTimeout(() => {
+      sendTouchEvent(TOUCH_ACTION.UP, sourceScreen.value.width - 50, sourceScreen.value.height - 50);
+    }, 100);
+    ElMessage.success('已发送清除任务命令');
+  } else {
+    ElMessage.warning('主设备不在线，无法执行操作');
+  }
+};
 </script>
 
 <style scoped>
@@ -1643,14 +1714,14 @@ const handleInitialInfo = (data: any) => {
 
 .main-device {
   width: v-bind('DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH + "px"');
-  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT + 80) + "px"'); /* 添加header和info的高度 */
+  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT + 100) + "px"'); /* 增加footer的高度 */
   grid-column: span 2;
   grid-row: span 2;
 }
 
 .other-device {
   width: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.WIDTH / 2) + "px"');
-  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT / 2 + 74) + "px"'); /* 添加header和info的高度 */
+  height: v-bind('(DEVICE_CONFIG.SYNC.CANVAS_PORTRAIT.HEIGHT / 2 + 94) + "px"'); /* 增加footer的高度 */
 }
 
 .device-header {
@@ -1667,6 +1738,17 @@ const handleInitialInfo = (data: any) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-tag {
+  flex-shrink: 0;
 }
 
 .device-screen {
@@ -1724,17 +1806,33 @@ const handleInitialInfo = (data: any) => {
   object-position: center;
 }
 
-.device-info {
-  padding: 10px;
+.device-footer {
+  padding: 12px 15px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background-color: #f9f9f9;
-  font-size: 12px;
+  min-height: 50px; /* 确保足够高度 */
+  box-sizing: border-box;
 }
 
 .device-id {
   color: #606266;
+  font-size: 12px;
+  white-space: nowrap;
+  max-width: 50%; /* 限制ID宽度，防止挤压操作按钮 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0; /* 防止操作按钮被压缩 */
+}
+
+.device-actions .el-button {
+  min-width: 80px; /* 确保按钮宽度足够 */
 }
 
 .retry-button {
