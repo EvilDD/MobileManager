@@ -36,8 +36,8 @@ export const DEVICE_CONFIG = {
   // 云机同步设备尺寸配置
   SYNC: {
     CANVAS_PORTRAIT: {
-      WIDTH: 480,
-      HEIGHT: 870
+      WIDTH: 432,
+      HEIGHT: 960
     },
     CANVAS_LANDSCAPE: {
       WIDTH: 870,

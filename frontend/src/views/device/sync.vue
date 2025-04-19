@@ -111,6 +111,19 @@
           </el-tag>
         </div>
         <div class="device-screen">
+          <!-- 添加触摸层到子设备，类似主设备 -->
+          <div
+            v-if="device.status === 'online' && getOtherDeviceVideoReceived(device.deviceId) && !getOtherDeviceStreamError(device.deviceId)"
+            class="touch-layer"
+            @mousedown="(event) => handleOtherDeviceMouseDown(event, device)"
+            @mousemove="(event) => handleOtherDeviceMouseMove(event, device)"
+            @mouseup="(event) => handleOtherDeviceMouseUp(event, device)"
+            @mouseleave="(event) => handleOtherDeviceMouseUp(event, device)"
+            @touchstart="(event) => handleOtherDeviceTouchStart(event, device)"
+            @touchmove="(event) => handleOtherDeviceTouchMove(event, device)"
+            @touchend="(event) => handleOtherDeviceTouchEnd(event, device)"
+          />
+
           <!-- 视频流播放器容器 - 替换截图组件 -->
           <div 
             v-if="device.status === 'online'"
@@ -1745,6 +1758,219 @@ const handleOtherDeviceAction = (device: Device, action: string) => {
   }
 };
 
+// 子设备的触摸点数据
+const otherDeviceTouchPoints = ref<Record<string, {
+  x: number,
+  y: number,
+  startX: number,
+  startY: number,
+  isTouching: boolean
+}>>({});
+
+// 子设备鼠标按下事件
+const handleOtherDeviceMouseDown = (event: MouseEvent, device: Device) => {
+  // 初始化设备触摸状态（如果不存在）
+  if (!otherDeviceTouchPoints.value[device.deviceId]) {
+    otherDeviceTouchPoints.value[device.deviceId] = {
+      x: 0,
+      y: 0,
+      startX: 0,
+      startY: 0,
+      isTouching: false
+    };
+  }
+  
+  // 获取设备触摸状态
+  const touchPoint = otherDeviceTouchPoints.value[device.deviceId];
+  touchPoint.isTouching = true;
+  touchPoint.startX = event.offsetX;
+  touchPoint.startY = event.offsetY;
+  touchPoint.x = event.offsetX;
+  touchPoint.y = event.offsetY;
+  
+  console.log(`设备 ${device.name} 鼠标按下事件`, {
+    x: event.offsetX,
+    y: event.offsetY,
+    button: event.button,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸按下事件到该设备
+  sendOtherDeviceTouchEvent(device.deviceId, TOUCH_ACTION.DOWN, event.offsetX, event.offsetY);
+};
+
+// 子设备鼠标移动事件
+const handleOtherDeviceMouseMove = (event: MouseEvent, device: Device) => {
+  // 获取设备触摸状态
+  const touchPoint = otherDeviceTouchPoints.value[device.deviceId];
+  if (!touchPoint || !touchPoint.isTouching) return;
+  
+  touchPoint.x = event.offsetX;
+  touchPoint.y = event.offsetY;
+  
+  // 发送触摸移动事件到该设备
+  sendOtherDeviceTouchEvent(device.deviceId, TOUCH_ACTION.MOVE, event.offsetX, event.offsetY);
+};
+
+// 子设备鼠标抬起事件
+const handleOtherDeviceMouseUp = (event: MouseEvent, device: Device) => {
+  // 获取设备触摸状态
+  const touchPoint = otherDeviceTouchPoints.value[device.deviceId];
+  if (!touchPoint || !touchPoint.isTouching) return;
+  
+  touchPoint.isTouching = false;
+  
+  console.log(`设备 ${device.name} 鼠标抬起事件`, {
+    x: event.offsetX,
+    y: event.offsetY,
+    deltaX: event.offsetX - touchPoint.startX,
+    deltaY: event.offsetY - touchPoint.startY,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸抬起事件到该设备
+  sendOtherDeviceTouchEvent(device.deviceId, TOUCH_ACTION.UP, event.offsetX, event.offsetY);
+};
+
+// 子设备触摸开始事件 - 移动设备支持
+const handleOtherDeviceTouchStart = (event: TouchEvent, device: Device) => {
+  event.preventDefault(); // 阻止默认行为
+  
+  // 初始化设备触摸状态（如果不存在）
+  if (!otherDeviceTouchPoints.value[device.deviceId]) {
+    otherDeviceTouchPoints.value[device.deviceId] = {
+      x: 0,
+      y: 0,
+      startX: 0,
+      startY: 0,
+      isTouching: false
+    };
+  }
+  
+  // 获取设备触摸状态
+  const touchPoint = otherDeviceTouchPoints.value[device.deviceId];
+  touchPoint.isTouching = true;
+  
+  const touch = event.touches[0];
+  const target = event.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  
+  touchPoint.startX = x;
+  touchPoint.startY = y;
+  touchPoint.x = x;
+  touchPoint.y = y;
+  
+  console.log(`设备 ${device.name} 触摸开始事件`, {
+    x,
+    y,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸按下事件到该设备
+  sendOtherDeviceTouchEvent(device.deviceId, TOUCH_ACTION.DOWN, x, y);
+};
+
+// 子设备触摸移动事件 - 移动设备支持
+const handleOtherDeviceTouchMove = (event: TouchEvent, device: Device) => {
+  event.preventDefault(); // 阻止默认行为
+  
+  // 获取设备触摸状态
+  const touchPoint = otherDeviceTouchPoints.value[device.deviceId];
+  if (!touchPoint || !touchPoint.isTouching) return;
+  
+  const touch = event.touches[0];
+  const target = event.target as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  
+  touchPoint.x = x;
+  touchPoint.y = y;
+
+  // 发送触摸移动事件到该设备
+  sendOtherDeviceTouchEvent(device.deviceId, TOUCH_ACTION.MOVE, x, y);
+};
+
+// 子设备触摸结束事件 - 移动设备支持
+const handleOtherDeviceTouchEnd = (event: TouchEvent, device: Device) => {
+  event.preventDefault(); // 阻止默认行为
+  
+  // 获取设备触摸状态
+  const touchPoint = otherDeviceTouchPoints.value[device.deviceId];
+  if (!touchPoint || !touchPoint.isTouching) return;
+  
+  touchPoint.isTouching = false;
+  
+  console.log(`设备 ${device.name} 触摸结束事件`, {
+    endX: touchPoint.x,
+    endY: touchPoint.y,
+    deltaX: touchPoint.x - touchPoint.startX,
+    deltaY: touchPoint.y - touchPoint.startY,
+    timestamp: new Date().toISOString()
+  });
+
+  // 发送触摸抬起事件到该设备
+  sendOtherDeviceTouchEvent(device.deviceId, TOUCH_ACTION.UP, touchPoint.x, touchPoint.y);
+};
+
+// 向子设备发送触摸事件
+const sendOtherDeviceTouchEvent = (deviceId: string, action: number, x: number, y: number) => {
+  const deviceConnection = otherDeviceConnections.value[deviceId];
+  
+  // 检查WebSocket连接是否可用
+  if (!deviceConnection || !deviceConnection.wsConnection || 
+      deviceConnection.wsConnection.readyState !== WebSocket.OPEN) {
+    console.warn(`设备 ${deviceId} WebSocket连接不可用，无法发送触摸事件`);
+    return;
+  }
+  
+  try {
+    // 获取子设备的实际屏幕分辨率
+    let targetDeviceWidth = sourceScreen.value.width;  // 默认使用与主设备相同的尺寸
+    let targetDeviceHeight = sourceScreen.value.height;
+    
+    // 如果子设备的player中有记录视频尺寸，使用实际尺寸
+    if (deviceConnection.player) {
+      const player = deviceConnection.player as any;
+      if (player.videoWidth && player.videoHeight) {
+        targetDeviceWidth = player.videoWidth;
+        targetDeviceHeight = player.videoHeight;
+      }
+    }
+    
+    // 缩放因子计算 - 子设备触摸层是主设备的一半尺寸
+    const scaleX = targetDeviceWidth / (sourceScreen.value.width / 2);
+    const scaleY = targetDeviceHeight / (sourceScreen.value.height / 2);
+
+    const targetX = Math.round(x * scaleX);
+    const targetY = Math.round(y * scaleY);
+
+    // 创建触摸事件消息对象
+    const touchEvent = {
+      type: "touch",  
+      data: {
+        action: action,
+        x: targetX,
+        y: targetY
+      }
+    };
+    
+    // 发送事件到该设备
+    deviceConnection.wsConnection.send(JSON.stringify(touchEvent));
+    console.log(`已发送触摸事件到设备 ${deviceId}:`, {
+      action,
+      原始坐标: { x, y },
+      目标坐标: { x: targetX, y: targetY }
+    });
+  } catch (error) {
+    console.error(`发送触摸事件到设备 ${deviceId} 失败:`, error);
+  }
+};
+
 </script>
 
 <style scoped>
@@ -1755,6 +1981,7 @@ const handleOtherDeviceAction = (device: Device, action: string) => {
   background-color: #000;
   z-index: 1;
   position: relative;
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 /* 添加触摸层样式 */
@@ -1872,6 +2099,9 @@ const handleOtherDeviceAction = (device: Device, action: string) => {
   transition: all 0.3s ease;
   position: relative;
   height: 100%;
+  will-change: transform; /* 优化渲染性能 */
+  backface-visibility: hidden; /* 防止3D变换中可能的闪烁 */
+  transform: translateZ(0); /* 启用GPU加速 */
 }
 
 .device-card:hover {
@@ -1897,6 +2127,7 @@ const handleOtherDeviceAction = (device: Device, action: string) => {
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid #f0f0f0;
+  background-color: white; /* 确保背景色与卡片一致 */
 }
 
 .device-name {
@@ -1981,6 +2212,7 @@ const handleOtherDeviceAction = (device: Device, action: string) => {
   background-color: #f9f9f9;
   min-height: 50px; /* 确保足够高度 */
   box-sizing: border-box;
+  border-top: none; /* 移除可能的边框 */
 }
 
 .device-id {
@@ -2004,6 +2236,18 @@ const handleOtherDeviceAction = (device: Device, action: string) => {
 
 .retry-button {
   margin-top: 10px;
+}
+
+/* 消除边界可能的横线 */
+.device-card > div {
+  margin: 0;
+  border: none;
+}
+
+/* 确保canvas边界平滑 */
+.device-screen canvas {
+  display: block; /* 防止inline元素底部可能的间隙 */
+  vertical-align: bottom; /* 对于inline元素，消除底部间隙 */
 }
 
 /* 响应式调整 */
