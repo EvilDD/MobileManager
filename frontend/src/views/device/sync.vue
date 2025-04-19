@@ -243,7 +243,7 @@ const convertCoordinates = (x: number, y: number) => {
   const targetX = Math.round(x * scaleX);
   const targetY = Math.round(y * scaleY);
   
-  console.log(`坐标转换: (${x},${y}) => (${targetX},${targetY}), 比例: ${scaleX.toFixed(2)}x${scaleY.toFixed(2)}`);
+  // console.log(`坐标转换: (${x},${y}) => (${targetX},${targetY}), 比例: ${scaleX.toFixed(2)}x${scaleY.toFixed(2)}`);
   
   return { x: targetX, y: targetY };
 };
@@ -303,7 +303,7 @@ const sendTouchEvent = (action: number, x: number, y: number) => {
     }
   };
 
-  console.log('发送触摸事件:', touchEvent);
+  // console.log('发送触摸事件:', touchEvent);
 
   try {
     // 发送事件到后端
@@ -345,13 +345,13 @@ const handleMouseMove = (event: MouseEvent) => {
     y: event.offsetY
   };
   
-  console.log('鼠标移动事件', {
-    x: event.offsetX,
-    y: event.offsetY,
-    deltaX: event.offsetX - touchStartPoint.value.x,
-    deltaY: event.offsetY - touchStartPoint.value.y,
-    timestamp: new Date().toISOString()
-  });
+  // console.log('鼠标移动事件', {
+  //   x: event.offsetX,
+  //   y: event.offsetY,
+  //   deltaX: event.offsetX - touchStartPoint.value.x,
+  //   deltaY: event.offsetY - touchStartPoint.value.y,
+  //   timestamp: new Date().toISOString()
+  // });
 
   // 发送触摸移动事件到后端
   sendTouchEvent(TOUCH_ACTION.MOVE, event.offsetX, event.offsetY);
@@ -567,7 +567,7 @@ const safeHandleWSMessage = (event: MessageEvent, ws: WebSocket) => {
     ws.frameCount++;
     
     if (ws.frameCount === 1 || ws.frameCount % 100 === 0) {
-      console.log(`收到第${ws.frameCount}帧数据，大小: ${data.byteLength} 字节`);
+      // console.log(`收到第${ws.frameCount}帧数据，大小: ${data.byteLength} 字节`);
     }
     
     try {
