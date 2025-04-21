@@ -121,13 +121,28 @@ watch(() => props.modelValue, (newVal) => {
       isReady.value = true;
     }, 100);
   } else {
+    // 先标记组件状态为关闭
     isReady.value = false;
     streamReady.value = false;
     streamError.value = false;
     isLoading.value = false;
+    
+    // 延迟关闭连接，等待对话框动画完成后再调用API
     setTimeout(() => {
       visible.value = false;
       emit('closed');
+      
+      // 在对话框完全关闭后，再调用停止流连接API
+      if (streamRef.value && streamRef.value.closeConnection) {
+        try {
+          console.log('关闭设备流连接 (通过watch)');
+          streamRef.value.closeConnection().catch(error => {
+            console.error('关闭设备流连接失败:', error);
+          });
+        } catch (error) {
+          console.error('调用关闭设备流连接方法失败:', error);
+        }
+      }
     }, 200);
   }
 });
@@ -224,15 +239,11 @@ const closeDialog = () => {
   streamError.value = false;
   errorMessage.value = '';
   
-  // 更新父组件的v-model值
+  // 更新父组件的v-model值，触发watch监听器处理关闭
   emit('update:modelValue', false);
   
-  // 短暂延迟后处理完全关闭
-  setTimeout(() => {
-    visible.value = false;
-    emit('closed');
-  }, 200);
-};
+  // 注意：此处不再直接调用closeConnection，让watch监听器在合适的时机调用
+}
 
 // 开始拖拽
 const startDrag = (e: MouseEvent) => {

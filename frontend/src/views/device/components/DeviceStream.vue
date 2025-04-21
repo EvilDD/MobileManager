@@ -16,6 +16,7 @@
   import { Loading, CircleClose } from '@element-plus/icons-vue';
   import { STREAM_WINDOW_CONFIG } from './config';
   import { ElMessage } from 'element-plus';
+  import { startDeviceStream, stopDeviceStream } from '@/api/device'; // 导入串流API
   
   const props = defineProps({
     deviceId: {
@@ -41,6 +42,7 @@
   const wscrcpyBaseUrl = computed(() => props.serverUrl || 'http://localhost:8000');
   const iframeSrc = ref('about:blank');
   const isLandscape = ref(false); // 添加横屏状态变量
+  const streamStarted = ref(false); // 标记流是否已启动
   
   // 连接超时定时器
   let connectionTimeoutTimer = null;
@@ -99,7 +101,7 @@
   });
   
   // 开始连接
-  const startConnect = () => {
+  const startConnect = async () => {
     if (!props.deviceId) return;
     
     loading.value = true;
@@ -115,22 +117,40 @@
     // 设置连接超时定时器
     startConnectionTimeout();
     
-    // 使用nextTick确保DOM已渲染
-    nextTick(() => {
-      console.log('开始连接设备:', props.deviceId, '服务器地址:', wscrcpyBaseUrl.value);
+    try {
+      // 在iframe加载前调用设备串流API
+      console.log('调用设备串流API:', props.deviceId);
+      const response = await startDeviceStream(props.deviceId);
+      console.log('设备串流API响应:', response);
       
-      // 先手动强制设置iframe容器尺寸
-      if (streamFrame.value && streamFrame.value.parentElement) {
-        updateContainerSize(isLandscape.value);
-        
-        // 直接加载串流URL
-        console.log('加载串流URL:', streamUrl.value);
-        iframeSrc.value = streamUrl.value;
-      } else {
-        // 如果无法获取iframe元素，直接报错
-        handleConnectionError('无法初始化连接界面');
+      if (response.code !== 0) {
+        handleConnectionError('启动设备串流失败: ' + (response.message || '未知错误'));
+        return;
       }
-    });
+      
+      // 标记串流已启动
+      streamStarted.value = true;
+      
+      // 使用nextTick确保DOM已渲染
+      nextTick(() => {
+        console.log('开始连接设备:', props.deviceId, '服务器地址:', wscrcpyBaseUrl.value);
+        
+        // 先手动强制设置iframe容器尺寸
+        if (streamFrame.value && streamFrame.value.parentElement) {
+          updateContainerSize(isLandscape.value);
+          
+          // 直接加载串流URL
+          console.log('加载串流URL:', streamUrl.value);
+          iframeSrc.value = streamUrl.value;
+        } else {
+          // 如果无法获取iframe元素，直接报错
+          handleConnectionError('无法初始化连接界面');
+        }
+      });
+    } catch (error) {
+      console.error('调用设备串流API失败:', error);
+      handleConnectionError('调用设备串流API失败: ' + (error.message || '未知错误'));
+    }
   };
   
   // 根据横竖屏状态调整容器尺寸
@@ -191,7 +211,7 @@
   };
   
   // 重试连接
-  const retryConnect = () => {
+  const retryConnect = async () => {
     console.log('重试连接设备:', props.deviceId);
     
     // 重置状态
@@ -202,6 +222,11 @@
     
     // 清除已有的超时定时器
     clearConnectionTimeout();
+    
+    // 如果已经启动了串流，先停止
+    if (streamStarted.value) {
+      await closeConnection();
+    }
     
     // 短暂延迟后开始新连接，确保iframe刷新
     setTimeout(() => {
@@ -215,6 +240,39 @@
         handleConnectionError('无法找到流视图');
       }
     }, 500);
+  };
+  
+  // 关闭连接方法
+  const closeConnection = async () => {
+    // 只有在串流已启动时才调用停止API
+    if (streamStarted.value && props.deviceId) {
+      try {
+        console.log('调用停止设备串流API:', props.deviceId);
+        await stopDeviceStream(props.deviceId);
+        console.log('设备串流已停止');
+        streamStarted.value = false;
+      } catch (error) {
+        console.error('停止设备串流失败:', error);
+        // 即使调用API失败，我们仍然将streamStarted标记为false，防止重复调用
+        streamStarted.value = false;
+      }
+    }
+    
+    // 安全地重置iframe - 检查元素是否存在
+    try {
+      if (streamFrame.value) {
+        streamFrame.value.src = 'about:blank';
+      }
+    } catch (error) {
+      console.warn('清理iframe时出错:', error);
+    }
+    
+    // 重置状态
+    iframeSrc.value = 'about:blank';
+    error.value = false;
+    loading.value = true;
+    
+    return true; // 返回一个值，表示操作已完成
   };
   
   // 处理连接错误
@@ -415,17 +473,26 @@
       connectionStabilityTimer = null;
     }
     
+    // 停止设备串流 - 不使用await，避免组件卸载被阻塞
+    if (streamStarted.value && props.deviceId) {
+      console.log('组件卸载前关闭设备串流:', props.deviceId);
+      // 使用Promise处理可能的异步操作
+      stopDeviceStream(props.deviceId).catch(error => {
+        console.error('组件卸载时停止设备串流失败:', error);
+      }).finally(() => {
+        // 确保标记为已关闭
+        streamStarted.value = false;
+      });
+    }
+    
     // 移除消息事件监听器
     window.removeEventListener('message', handleIframeMessage);
-    
-    if (streamFrame.value) {
-      streamFrame.value.src = 'about:blank';
-    }
   });
   
   // 暴露方法给父组件
   defineExpose({
-    retryConnect
+    retryConnect,
+    closeConnection // 暴露关闭连接方法
   });
   </script>
   
