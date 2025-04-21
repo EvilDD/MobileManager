@@ -23,14 +23,13 @@ MobileManager 是一个强大的移动设备管理系统，基于 ADB (Android D
 
 </div>
 
-## 🚀 最近更新 (v2.0.0 - 2025-04-18)
+## 🚀 最近更新 (v2.1.0 - 2025-04-21)
 
-- ✅ 添加云机同步样式及分组手机勾选同步设备逻辑
-- ✅ GoFrame后端实现与设备通信，转发视频流至前端，接收前端事件消息
-- ✅ 前端复刻实现WebCodecs解码视频流
-- ✅ 修复花屏问题
-- ✅ 修复后端视频流转发buffer溢出问题
-- ✅ 云机同步页面支持主从设备画面显示
+- ✅ 主设备添加触摸事件支持
+- ✅ 实现主从设备触摸事件同步操作
+- ✅ 支持单个子设备独立的触摸事件
+- ✅ 支持主从按键消息同步操作
+- ✅ 支持单个设备独立按键操作
 
 查看完整更新历史：[更新日志](CHANGELOG.md)
 
@@ -103,6 +102,7 @@ go run main.go
 ```bash
 cd frontend
 pnpm install
+rm frontend\.env && mv frontend\.env.bak frontend\.env
 pnpm run dev
 ```
 
