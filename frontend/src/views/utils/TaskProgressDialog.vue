@@ -46,14 +46,17 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { getBatchTaskStatus, type BatchTaskStatus } from '@/api/file';
+import { getBatchTaskStatus as getFileBatchTaskStatus, type BatchTaskStatus } from '@/api/file';
+import { getBatchTaskStatus as getAppBatchTaskStatus } from '@/api/app';
 
 const props = withDefaults(defineProps<{
   visible: boolean;
   taskId: string;
-  autoRefresh?: boolean; // 是否自动刷新
+  taskType?: 'app' | 'file'; // 任务类型：app 或 file
+  autoRefresh?: boolean;    // 是否自动刷新
   refreshInterval?: number; // 刷新间隔 (毫秒)
 }>(), {
+  taskType: 'file',         // 默认为文件任务
   autoRefresh: true,
   refreshInterval: 2000
 });
@@ -126,7 +129,9 @@ const fetchTaskStatus = async () => {
   loading.value = true;
   
   try {
-    const res = await getBatchTaskStatus(props.taskId);
+    // 根据任务类型选择不同的API
+    const api = props.taskType === 'app' ? getAppBatchTaskStatus : getFileBatchTaskStatus;
+    const res = await api(props.taskId);
     
     if (res.code === 0) {
       taskStatus.value = res.data;

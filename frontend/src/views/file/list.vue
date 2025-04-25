@@ -121,6 +121,7 @@
     <TaskProgressDialog
       v-model:visible="taskDialogVisible"
       :taskId="currentTaskId"
+      taskType="file"
     />
   </div>
 </template>
