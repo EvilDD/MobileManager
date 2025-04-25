@@ -98,7 +98,7 @@ export function uploadFile(file: globalThis.File) {
 export function batchPushByDevices(data: BatchPushParams) {
   return http.request<BatchOperationResult>(
     'post',
-    '/api/files/batch-push',
+    '/api/files/batch-push-by-devices',
     { data }
   );
 }
@@ -107,7 +107,8 @@ export function batchPushByDevices(data: BatchPushParams) {
 export function getBatchTaskStatus(taskId: string) {
   return http.request<BatchTaskStatusResult>(
     'get',
-    `/api/files/batch-task-status/${taskId}`
+    '/api/files/batch-task-status',
+    { params: { taskId } }
   );
 }
 
@@ -115,6 +116,7 @@ export function getBatchTaskStatus(taskId: string) {
 export function deleteFile(fileId: number) {
   return http.request<{ code: number; message: string; data: null }>(
     'delete',
-    `/api/files/delete/${fileId}`
+    '/api/files/delete',
+    { data: { fileId } }
   );
 }
