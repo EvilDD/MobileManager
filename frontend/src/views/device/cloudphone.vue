@@ -772,10 +772,10 @@ const handleDeviceOperation = (command: string) => {
 
   switch (command) {
     case 'goHome':
-      batchGoToHome();
+      handleBatchGoHome();
       break;
     case 'killApps':
-      batchKillAllApps();
+      handleBatchKillApps();
       break;
     case 'pushFile':
       pushFileToDevice();
