@@ -9,7 +9,6 @@ import (
 	"mime"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -322,8 +321,9 @@ func (s *fileService) doBatchPushTask(ctx context.Context, task *FileBatchTask, 
 	// 获取ADB实例
 	adbInstance := adb.Default()
 
-	// 设备上的目标路径
-	devicePath := filepath.Join(DeviceTargetDir, fileInfo.Name)
+	// 设备上的目标路径 - 注意：确保使用Unix风格的路径分隔符
+	devicePath := DeviceTargetDir + "/" + fileInfo.OriginalName
+	// g.Log().Debugf(ctx, "文件推送目标路径: %s", devicePath)
 
 	// 启动goroutine执行操作
 	for _, deviceId := range deviceIds {
