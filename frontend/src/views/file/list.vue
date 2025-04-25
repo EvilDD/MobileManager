@@ -74,7 +74,8 @@
             action="#"
             :auto-upload="false"
             :on-change="handleFileChange"
-            :file-list="fileList"
+            :file-list="uploadFiles"
+            :on-remove="() => { uploadFiles.value = []; }"
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
             <div class="el-upload__text">
@@ -131,16 +132,6 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="并发数" prop="maxWorker">
-          <el-slider
-            v-model="deviceForm.maxWorker"
-            :min="1"
-            :max="10"
-            :step="1"
-            show-stops
-            show-input
-          />
-        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -164,8 +155,11 @@
           <el-descriptions-item label="进度">
             <el-progress 
               :percentage="Math.round(((taskStatus.completed + taskStatus.failed) / taskStatus.total) * 100)" 
-              :status="taskStatus.status === 'complete' ? 'success' : 'exception'"
+              :status="getProgressStatus(taskStatus)"
             />
+            <div class="progress-text">
+              {{ taskStatus.completed }}/{{ taskStatus.total }} {{ taskStatus.failed > 0 ? `(失败: ${taskStatus.failed})` : '' }}
+            </div>
           </el-descriptions-item>
         </el-descriptions>
 
@@ -225,7 +219,7 @@ const deviceList = ref<Device[]>([]);
 const deviceForm = reactive({
   fileId: 0,
   deviceIds: [] as string[],
-  maxWorker: 3,
+  maxWorker: 50,
 });
 const actionLoading = ref(false);
 
@@ -290,6 +284,7 @@ const openUploadDialog = () => {
   uploadDialogVisible.value = true;
   uploadFiles.value = [];
   uploadProgress.value = 0;
+  uploading.value = false;
 };
 
 // 处理文件选择变化
@@ -301,6 +296,8 @@ const handleFileChange = (file: UploadFile) => {
 const cancelUpload = () => {
   uploadDialogVisible.value = false;
   uploadFiles.value = [];
+  uploading.value = false;
+  uploadProgress.value = 0;
 };
 
 // 提交上传
@@ -334,6 +331,7 @@ const submitUpload = async () => {
     if (res.code === 0) {
       ElMessage.success("文件上传成功");
       uploadDialogVisible.value = false;
+      uploadFiles.value = []; // 清除文件列表
       fetchFileList(); // 刷新文件列表
     } else {
       ElMessage.error(res.message || "文件上传失败");
@@ -505,6 +503,14 @@ const getTagType = (fileType: string) => {
   }
 };
 
+// 获取进度条状态
+const getProgressStatus = (task: BatchTaskStatus | null) => {
+  if (!task) return '';
+  if (task.status === 'failed') return 'exception';
+  if (task.status === 'complete') return 'success';
+  return '';
+};
+
 // 获取任务状态文本
 const getTaskStatusText = (status: string) => {
   switch (status) {
@@ -572,5 +578,11 @@ onMounted(() => {
 
 .upload-demo {
   width: 100%;
+}
+
+.progress-text {
+  margin-top: 5px;
+  font-size: 14px;
+  color: #606266;
 }
 </style> 
