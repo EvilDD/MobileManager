@@ -26,11 +26,15 @@ import {
   getBatchTaskStatus,
   type BatchTaskStatus
 } from "@/api/app";
+import { getFileList, type File as FileType } from "@/api/file";
 import GroupBadge from "./components/GroupBadge.vue";
 import DeviceStream from "./components/DeviceStream.vue";
 import DeviceScreenshot from "./components/DeviceScreenshot.vue";
 import StreamDialog from "./components/StreamDialog.vue";
 import MoveGroupDialog from "./components/MoveGroupDialog.vue";
+import DeviceSelector from '@/views/utils/DeviceSelector.vue';
+import TaskProgressDialog from '@/views/utils/TaskProgressDialog.vue';
+import { pushFileToDevices } from '@/views/utils/DevicePushService';
 import {
   Plus,
   Refresh,
@@ -43,7 +47,9 @@ import {
   VideoPlay,
   Switch,
   ArrowRight,
-  FullScreen
+  FullScreen,
+  Document,
+  Upload
 } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import { useCloudPhoneStore } from "@/store/modules/cloudphone";
@@ -757,19 +763,24 @@ const handleBatchAppOperation = async (operation: string) => {
   appListVisible.value = true;
 };
 
-// 设备操作处理
-const handleDeviceOperation = async (operation: string) => {
+// 处理设备操作
+const handleDeviceOperation = (command: string) => {
   if (selectedDevices.value.length === 0) {
     ElMessage.warning('请先选择设备');
     return;
   }
 
-  switch (operation) {
+  switch (command) {
     case 'goHome':
-      await handleBatchGoHome();
+      batchGoToHome();
       break;
     case 'killApps':
-      await handleBatchKillApps();
+      batchKillAllApps();
+      break;
+    case 'pushFile':
+      pushFileToDevice();
+      break;
+    default:
       break;
   }
 };
@@ -797,6 +808,175 @@ const goToSync = () => {
   
   // 跳转到同步页面
   router.push('/device/sync');
+};
+
+// 文件推送相关状态
+const fileListDialogVisible = ref(false);
+const fileList = ref<FileType[]>([]);
+const fileListLoading = ref(false);
+const fileListPagination = ref({
+  page: 1,
+  pageSize: 10,
+  total: 0
+});
+const fileSearchKeyword = ref("");
+const currentFileId = ref<number>(0);
+
+// 设备选择对话框
+const deviceSelectorVisible = ref(false);
+
+// 任务进度对话框
+const taskProgressDialogVisible = ref(false);
+const fileTaskId = ref("");
+
+// 获取文件列表
+const fetchFileList = async () => {
+  fileListLoading.value = true;
+  try {
+    const res = await getFileList({
+      page: fileListPagination.value.page,
+      pageSize: fileListPagination.value.pageSize,
+      originalName: fileSearchKeyword.value
+    });
+    
+    if (res.code === 0) {
+      fileList.value = res.data.list;
+      fileListPagination.value.total = res.data.total;
+    } else {
+      ElMessage.error(res.message || "获取文件列表失败");
+    }
+  } catch (error) {
+    console.error("获取文件列表出错:", error);
+    ElMessage.error("获取文件列表出错");
+  } finally {
+    fileListLoading.value = false;
+  }
+};
+
+// 打开文件列表对话框
+const openFileListDialog = () => {
+  fileListDialogVisible.value = true;
+  fetchFileList();
+};
+
+// 处理文件选择
+const handleFileSelected = (file: FileType) => {
+  currentFileId.value = file.fileId;
+  fileListDialogVisible.value = false;
+  
+  // 如果已经有选中的设备，直接开始推送任务，不弹出设备选择对话框
+  if (selectedDevices.value.length > 0) {
+    pushFileToDevices(
+      currentFileId.value, 
+      selectedDevices.value,
+      50 // 默认最大并发数
+    ).then(taskId => {
+      // 显示任务进度对话框
+      fileTaskId.value = taskId;
+      taskProgressDialogVisible.value = true;
+    }).catch(error => {
+      console.error("推送任务创建出错:", error);
+    });
+  } else {
+    // 没有选中设备，弹出设备选择对话框
+    deviceSelectorVisible.value = true;
+  }
+};
+
+// 处理设备选择确认
+const handleDeviceConfirm = (data: { deviceIds?: string[], maxWorker?: number }) => {
+  if (!data.deviceIds || data.deviceIds.length === 0) {
+    ElMessage.warning("请选择至少一个设备");
+    return;
+  }
+  
+  if (currentFileId.value <= 0) {
+    ElMessage.warning("请先选择要推送的文件");
+    return;
+  }
+  
+  pushFileToDevices(
+    currentFileId.value, 
+    data.deviceIds,
+    data.maxWorker || 50
+  ).then(taskId => {
+    deviceSelectorVisible.value = false;
+    
+    // 显示任务进度对话框
+    fileTaskId.value = taskId;
+    taskProgressDialogVisible.value = true;
+  }).catch(error => {
+    console.error("推送任务创建出错:", error);
+  });
+};
+
+// 文件推送操作
+const pushFileToDevice = () => {
+  // 如果已经选中了设备，直接打开文件列表对话框
+  if (selectedDevices.value.length > 0) {
+    openFileListDialog();
+  } else {
+    ElMessage.warning("请先选择至少一个设备");
+  }
+};
+
+// 修改文件分页
+const handleFilePageChange = (page: number) => {
+  fileListPagination.value.page = page;
+  fetchFileList();
+};
+
+// 修改文件页大小
+const handleFileSizeChange = (size: number) => {
+  fileListPagination.value.pageSize = size;
+  fileListPagination.value.page = 1;
+  fetchFileList();
+};
+
+// 文件搜索
+const handleFileSearch = () => {
+  fileListPagination.value.page = 1;
+  fetchFileList();
+};
+
+// 重置文件搜索
+const resetFileSearch = () => {
+  fileSearchKeyword.value = "";
+  fileListPagination.value.page = 1;
+  fetchFileList();
+};
+
+// 格式化文件大小
+const formatFileSize = (size: number) => {
+  if (size < 1024) {
+    return size + 'B';
+  } else if (size < 1024 * 1024) {
+    return (size / 1024).toFixed(2) + 'KB';
+  } else if (size < 1024 * 1024 * 1024) {
+    return (size / (1024 * 1024)).toFixed(2) + 'MB';
+  } else {
+    return (size / (1024 * 1024 * 1024)).toFixed(2) + 'GB';
+  }
+};
+
+// 获取文件标签类型
+const getFileTagType = (fileType: string): 'primary' | 'success' | 'info' | 'warning' | 'danger' => {
+  switch (fileType) {
+    case 'image':
+      return 'success';
+    case 'document':
+      return 'primary';
+    case 'video':
+      return 'warning';
+    case 'audio':
+      return 'info';
+    case 'archive':
+      return 'danger';
+    case 'app':
+      return 'warning';
+    default:
+      return 'info';
+  }
 };
 
 onMounted(() => {
@@ -926,6 +1106,9 @@ onMounted(() => {
               <el-dropdown-menu>
                 <el-dropdown-item command="goHome">回到主菜单</el-dropdown-item>
                 <el-dropdown-item command="killApps">清除后台应用</el-dropdown-item>
+                <el-dropdown-item command="pushFile">
+                  <el-icon><Upload /></el-icon>文件推送
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -1230,6 +1413,80 @@ onMounted(() => {
         </span>
       </template>
     </el-dialog>
+
+    <!-- 文件列表对话框 -->
+    <el-dialog
+      v-model="fileListDialogVisible"
+      title="选择要推送的文件"
+      width="60%"
+      :close-on-click-modal="false"
+    >
+      <div class="file-dialog-toolbar">
+        <div class="search-container">
+          <el-input
+            v-model="fileSearchKeyword"
+            placeholder="搜索文件名"
+            clearable
+            class="search-input"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button type="primary" @click="handleFileSearch">搜索</el-button>
+          <el-button @click="resetFileSearch">重置</el-button>
+        </div>
+      </div>
+      
+      <el-table
+        v-loading="fileListLoading"
+        :data="fileList"
+        style="width: 100%"
+        @row-click="handleFileSelected"
+      >
+        <el-table-column prop="fileName" label="文件名称" width="180" />
+        <el-table-column prop="originalName" label="原始文件名" width="180" />
+        <el-table-column label="大小" width="120">
+          <template #default="{ row }">
+            {{ formatFileSize(row.fileSize) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="fileType" label="类型" width="120">
+          <template #default="{ row }">
+            <el-tag :type="getFileTagType(row.fileType)">
+              {{ row.fileType || '未知' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+      
+      <div class="file-dialog-pagination">
+        <el-pagination
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="fileListPagination.total"
+          :current-page="fileListPagination.page"
+          :page-size="fileListPagination.pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          @current-change="handleFilePageChange"
+          @size-change="handleFileSizeChange"
+        />
+      </div>
+    </el-dialog>
+
+    <!-- 设备选择对话框 -->
+    <DeviceSelector
+      v-model:visible="deviceSelectorVisible"
+      title="选择推送设备" 
+      :multi-select="true"
+      @confirm="handleDeviceConfirm"
+    />
+
+    <!-- 任务进度对话框 -->
+    <TaskProgressDialog
+      v-model:visible="taskProgressDialogVisible"
+      :taskId="fileTaskId"
+    />
   </div>
 </template>
 
@@ -1672,5 +1929,30 @@ onMounted(() => {
 
 .content-area:hover .el-scrollbar :deep(.el-scrollbar__bar) {
   opacity: 1;
+}
+
+/* 文件对话框样式 */
+.file-dialog-toolbar {
+  margin-bottom: 20px;
+}
+
+.search-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.search-input {
+  width: 250px;
+}
+
+.file-dialog-pagination {
+  margin-top: 20px;
+  text-align: right;
+}
+
+/* 设备操作图标样式 */
+.el-dropdown-item .el-icon {
+  margin-right: 5px;
 }
 </style>
