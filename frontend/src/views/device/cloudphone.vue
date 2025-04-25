@@ -34,6 +34,8 @@ import StreamDialog from "./components/StreamDialog.vue";
 import MoveGroupDialog from "./components/MoveGroupDialog.vue";
 import DeviceSelector from '@/views/utils/DeviceSelector.vue';
 import TaskProgressDialog from '@/views/utils/TaskProgressDialog.vue';
+import AppSelectDialog from './dialogs/AppSelectDialog.vue';
+import FileSelectDialog from './dialogs/FileSelectDialog.vue';
 import { pushFileToDevices } from '@/views/utils/DevicePushService';
 import {
   Plus,
@@ -575,35 +577,11 @@ const handleBatchKillApps = async () => {
 };
 
 // 应用列表数据
-const appList = ref<App[]>([]);
-const appListLoading = ref(false);
 const appListVisible = ref(false);
 const selectedAppId = ref<number | null>(null);
 
 // 当前选择的操作类型
 const currentOperation = ref<string>("");
-
-// 获取应用列表
-const loadAppList = async () => {
-  try {
-    appListLoading.value = true;
-    const res = await getAppList({
-      page: 1,
-      pageSize: 100,
-      appType: "用户应用"
-    });
-    if (res.code === 0) {
-      appList.value = res.data.list;
-    } else {
-      ElMessage.error(res.message || "获取应用列表失败");
-    }
-  } catch (error) {
-    console.error("获取应用列表失败:", error);
-    ElMessage.error("获取应用列表失败");
-  } finally {
-    appListLoading.value = false;
-  }
-};
 
 // 任务状态相关
 const taskStatusDialogVisible = ref(false);
@@ -687,7 +665,6 @@ onUnmounted(() => {
 // 修改 handleAppSelected 函数
 const handleAppSelected = async (app: App) => {
   selectedAppId.value = app.id;
-  appListVisible.value = false;
 
   if (!currentOperation.value) {
     return;
@@ -812,14 +789,6 @@ const goToSync = () => {
 
 // 文件推送相关状态
 const fileListDialogVisible = ref(false);
-const fileList = ref<FileType[]>([]);
-const fileListLoading = ref(false);
-const fileListPagination = ref({
-  page: 1,
-  pageSize: 10,
-  total: 0
-});
-const fileSearchKeyword = ref("");
 const currentFileId = ref<number>(0);
 
 // 设备选择对话框
@@ -829,40 +798,9 @@ const deviceSelectorVisible = ref(false);
 const taskProgressDialogVisible = ref(false);
 const fileTaskId = ref("");
 
-// 获取文件列表
-const fetchFileList = async () => {
-  fileListLoading.value = true;
-  try {
-    const res = await getFileList({
-      page: fileListPagination.value.page,
-      pageSize: fileListPagination.value.pageSize,
-      originalName: fileSearchKeyword.value
-    });
-    
-    if (res.code === 0) {
-      fileList.value = res.data.list;
-      fileListPagination.value.total = res.data.total;
-    } else {
-      ElMessage.error(res.message || "获取文件列表失败");
-    }
-  } catch (error) {
-    console.error("获取文件列表出错:", error);
-    ElMessage.error("获取文件列表出错");
-  } finally {
-    fileListLoading.value = false;
-  }
-};
-
-// 打开文件列表对话框
-const openFileListDialog = () => {
-  fileListDialogVisible.value = true;
-  fetchFileList();
-};
-
 // 处理文件选择
 const handleFileSelected = (file: FileType) => {
   currentFileId.value = file.fileId;
-  fileListDialogVisible.value = false;
   
   // 如果已经有选中的设备，直接开始推送任务，不弹出设备选择对话框
   if (selectedDevices.value.length > 0) {
@@ -914,75 +852,15 @@ const handleDeviceConfirm = (data: { deviceIds?: string[], maxWorker?: number })
 const pushFileToDevice = () => {
   // 如果已经选中了设备，直接打开文件列表对话框
   if (selectedDevices.value.length > 0) {
-    openFileListDialog();
+    fileListDialogVisible.value = true;
   } else {
     ElMessage.warning("请先选择至少一个设备");
-  }
-};
-
-// 修改文件分页
-const handleFilePageChange = (page: number) => {
-  fileListPagination.value.page = page;
-  fetchFileList();
-};
-
-// 修改文件页大小
-const handleFileSizeChange = (size: number) => {
-  fileListPagination.value.pageSize = size;
-  fileListPagination.value.page = 1;
-  fetchFileList();
-};
-
-// 文件搜索
-const handleFileSearch = () => {
-  fileListPagination.value.page = 1;
-  fetchFileList();
-};
-
-// 重置文件搜索
-const resetFileSearch = () => {
-  fileSearchKeyword.value = "";
-  fileListPagination.value.page = 1;
-  fetchFileList();
-};
-
-// 格式化文件大小
-const formatFileSize = (size: number) => {
-  if (size < 1024) {
-    return size + 'B';
-  } else if (size < 1024 * 1024) {
-    return (size / 1024).toFixed(2) + 'KB';
-  } else if (size < 1024 * 1024 * 1024) {
-    return (size / (1024 * 1024)).toFixed(2) + 'MB';
-  } else {
-    return (size / (1024 * 1024 * 1024)).toFixed(2) + 'GB';
-  }
-};
-
-// 获取文件标签类型
-const getFileTagType = (fileType: string): 'primary' | 'success' | 'info' | 'warning' | 'danger' => {
-  switch (fileType) {
-    case 'image':
-      return 'success';
-    case 'document':
-      return 'primary';
-    case 'video':
-      return 'warning';
-    case 'audio':
-      return 'info';
-    case 'archive':
-      return 'danger';
-    case 'app':
-      return 'warning';
-    default:
-      return 'info';
   }
 };
 
 onMounted(() => {
   getGroups();
   getDevices();
-  loadAppList();
 });
 </script>
 
@@ -1114,7 +992,7 @@ onMounted(() => {
           </el-dropdown>
 
           <el-dropdown @command="handleBatchAppOperation" trigger="click">
-            <el-button :loading="appListLoading" :disabled="selectedDevices.length === 0">
+            <el-button :disabled="selectedDevices.length === 0">
               应用操作
               <el-icon class="el-icon--right"><arrow-down /></el-icon>
             </el-button>
@@ -1334,25 +1212,30 @@ onMounted(() => {
     />
 
     <!-- 修改应用选择对话框 -->
-    <el-dialog
-      v-model="appListVisible"
-      title="选择应用"
-      width="600px"
-      :close-on-click-modal="false"
-      @close="currentOperation = ''"
-    >
-      <el-table
-        v-loading="appListLoading"
-        :data="appList"
-        style="width: 100%"
-        height="400"
-        @row-click="handleAppSelected"
-      >
-        <el-table-column prop="name" label="应用名称" />
-        <el-table-column prop="packageName" label="包名" />
-        <el-table-column prop="version" label="版本" width="100" />
-      </el-table>
-    </el-dialog>
+    <AppSelectDialog
+      v-model:visible="appListVisible"
+      @select="handleAppSelected"
+    />
+
+    <!-- 文件列表对话框 -->
+    <FileSelectDialog
+      v-model:visible="fileListDialogVisible"
+      @select="handleFileSelected"
+    />
+
+    <!-- 设备选择对话框 -->
+    <DeviceSelector
+      v-model:visible="deviceSelectorVisible"
+      title="选择推送设备" 
+      :multi-select="true"
+      @confirm="handleDeviceConfirm"
+    />
+
+    <!-- 任务进度对话框 -->
+    <TaskProgressDialog
+      v-model:visible="taskProgressDialogVisible"
+      :taskId="fileTaskId"
+    />
 
     <!-- 任务状态对话框 -->
     <el-dialog
@@ -1413,80 +1296,6 @@ onMounted(() => {
         </span>
       </template>
     </el-dialog>
-
-    <!-- 文件列表对话框 -->
-    <el-dialog
-      v-model="fileListDialogVisible"
-      title="选择要推送的文件"
-      width="60%"
-      :close-on-click-modal="false"
-    >
-      <div class="file-dialog-toolbar">
-        <div class="search-container">
-          <el-input
-            v-model="fileSearchKeyword"
-            placeholder="搜索文件名"
-            clearable
-            class="search-input"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          <el-button type="primary" @click="handleFileSearch">搜索</el-button>
-          <el-button @click="resetFileSearch">重置</el-button>
-        </div>
-      </div>
-      
-      <el-table
-        v-loading="fileListLoading"
-        :data="fileList"
-        style="width: 100%"
-        @row-click="handleFileSelected"
-      >
-        <el-table-column prop="fileName" label="文件名称" width="180" />
-        <el-table-column prop="originalName" label="原始文件名" width="180" />
-        <el-table-column label="大小" width="120">
-          <template #default="{ row }">
-            {{ formatFileSize(row.fileSize) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="fileType" label="类型" width="120">
-          <template #default="{ row }">
-            <el-tag :type="getFileTagType(row.fileType)">
-              {{ row.fileType || '未知' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-      
-      <div class="file-dialog-pagination">
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next"
-          :total="fileListPagination.total"
-          :current-page="fileListPagination.page"
-          :page-size="fileListPagination.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          @current-change="handleFilePageChange"
-          @size-change="handleFileSizeChange"
-        />
-      </div>
-    </el-dialog>
-
-    <!-- 设备选择对话框 -->
-    <DeviceSelector
-      v-model:visible="deviceSelectorVisible"
-      title="选择推送设备" 
-      :multi-select="true"
-      @confirm="handleDeviceConfirm"
-    />
-
-    <!-- 任务进度对话框 -->
-    <TaskProgressDialog
-      v-model:visible="taskProgressDialogVisible"
-      :taskId="fileTaskId"
-    />
   </div>
 </template>
 
