@@ -462,6 +462,7 @@ func (s *fileService) List(ctx context.Context, req *v1.ListReq) (res *v1.ListRe
 			OriginalName: file.OriginalName,
 			FileType:     file.FileType,
 			FileSize:     file.FileSize,
+			UpdatedAt:    file.UpdatedAt.String(),
 		})
 	}
 

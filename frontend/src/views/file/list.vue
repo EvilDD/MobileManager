@@ -16,8 +16,8 @@
       </div>
       <div class="card-content">
         <el-table :data="fileList" style="width: 100%" v-loading="loading">
-          <el-table-column prop="fileName" label="文件名称" width="160" />
-          <el-table-column prop="originalName" label="原始文件名" width="160" />
+          <el-table-column prop="fileName" label="文件名称" width="300" />
+          <el-table-column prop="originalName" label="原始文件名" width="350" />
           <el-table-column label="大小" width="100">
             <template #default="{ row }">
               {{ formatSize(row.fileSize) }}
@@ -28,6 +28,11 @@
               <el-tag :type="getTagType(row.fileType)">
                 {{ row.fileType || '未知' }}
               </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="updatedAt" label="更新时间" width="180">
+            <template #default="{ row }">
+              {{ row.updatedAt || '未知' }}
             </template>
           </el-table-column>
           <el-table-column label="操作">

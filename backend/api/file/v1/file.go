@@ -68,6 +68,7 @@ type File struct {
 	OriginalName string `json:"originalName" dc:"原始文件名"`
 	FileType     string `json:"fileType" dc:"文件类型"`
 	FileSize     int64  `json:"fileSize" v:"required" dc:"文件大小"`
+	UpdatedAt    string `json:"updatedAt" dc:"更新时间"`
 }
 
 // ListReq 获取文件列表请求

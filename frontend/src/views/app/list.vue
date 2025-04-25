@@ -38,6 +38,11 @@
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column prop="updatedAt" label="更新时间" width="180">
+            <template #default="{ row }">
+              {{ row.updatedAt || '未知' }}
+            </template>
+          </el-table-column>
           <el-table-column label="操作">
             <template #default="{ row }">
               <div class="operation-buttons">
