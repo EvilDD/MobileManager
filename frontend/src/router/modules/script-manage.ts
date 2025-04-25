@@ -7,7 +7,7 @@ export default {
   meta: {
     icon: "ri:file-code-line",
     title: "脚本管理",
-    rank: 12,
+    rank: 22,
     alwaysShow: true
   },
   children: [

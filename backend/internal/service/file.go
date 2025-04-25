@@ -393,9 +393,11 @@ func (s *fileService) List(ctx context.Context, req *v1.ListReq) (res *v1.ListRe
 	// 转换为API返回结构
 	for _, file := range files {
 		res.List = append(res.List, v1.File{
-			FileId:   file.Id,
-			FileName: file.Name,
-			FileSize: file.FileSize,
+			FileId:       file.Id,
+			FileName:     file.Name,
+			OriginalName: file.OriginalName,
+			FileType:     file.FileType,
+			FileSize:     file.FileSize,
 		})
 	}
 

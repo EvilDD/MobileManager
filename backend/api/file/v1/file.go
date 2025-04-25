@@ -63,9 +63,11 @@ type BatchTaskResult struct {
 
 // 文件信息
 type File struct {
-	FileId   int64  `json:"fileId"   v:"required" dc:"文件ID"`
-	FileName string `json:"fileName" v:"required" dc:"文件名"`
-	FileSize int64  `json:"fileSize" v:"required" dc:"文件大小"`
+	FileId       int64  `json:"fileId"   v:"required" dc:"文件ID"`
+	FileName     string `json:"fileName" v:"required" dc:"文件名"`
+	OriginalName string `json:"originalName" dc:"原始文件名"`
+	FileType     string `json:"fileType" dc:"文件类型"`
+	FileSize     int64  `json:"fileSize" v:"required" dc:"文件大小"`
 }
 
 // ListReq 获取文件列表请求

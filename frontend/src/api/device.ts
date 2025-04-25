@@ -54,11 +54,12 @@ export interface DeviceListResult {
 }
 
 /** 获取设备列表 */
-export function getDeviceList(params: { 
-  page: number; 
+export function getDeviceList(params: {
+  page: number;
   pageSize: number;
   keyword?: string;
   groupId?: number;
+  status?: string;
 }) {
   return http.request<DeviceListResult>("get", "/api/devices/list", { params });
 }

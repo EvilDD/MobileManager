@@ -7,7 +7,7 @@ export default {
   meta: {
     icon: "ri:user-settings-line",
     title: "帐号管理",
-    rank: 11,
+    rank: 21,
     alwaysShow: true
   },
   children: [
