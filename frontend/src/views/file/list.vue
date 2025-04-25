@@ -110,82 +110,18 @@
     </el-dialog>
 
     <!-- 设备选择对话框 -->
-    <el-dialog v-model="deviceDialogVisible" title="选择推送设备" width="500px">
-      <el-form ref="deviceFormRef" :model="deviceForm" label-width="100px">
-        <el-form-item label="选择设备" prop="deviceIds">
-          <el-select 
-            v-model="deviceForm.deviceIds" 
-            multiple 
-            placeholder="请选择设备" 
-            style="width: 100%"
-          >
-            <el-option
-              v-for="device in deviceList"
-              :key="device.deviceId"
-              :label="device.name"
-              :value="device.deviceId"
-            >
-              <span>{{ device.name }}</span>
-              <span style="float: right; color: #8492a6; font-size: 13px">
-                {{ device.deviceId }}
-              </span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="deviceDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitPushToDevice" :loading="actionLoading">
-            确认
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
+    <DeviceSelector
+      v-model:visible="deviceDialogVisible"
+      title="选择推送设备" 
+      :multi-select="true"
+      @confirm="handleDeviceConfirm"
+    />
 
     <!-- 批量任务进度对话框 -->
-    <el-dialog v-model="taskDialogVisible" title="任务进度" width="600px">
-      <div v-if="taskStatus">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="任务ID">{{ taskStatus.taskId }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ getTaskStatusText(taskStatus.status) }}</el-descriptions-item>
-          <el-descriptions-item label="总设备数">{{ taskStatus.total }}</el-descriptions-item>
-          <el-descriptions-item label="已完成">{{ taskStatus.completed }}</el-descriptions-item>
-          <el-descriptions-item label="失败数">{{ taskStatus.failed }}</el-descriptions-item>
-          <el-descriptions-item label="进度">
-            <el-progress 
-              :percentage="Math.round(((taskStatus.completed + taskStatus.failed) / taskStatus.total) * 100)" 
-              :status="getProgressStatus(taskStatus)"
-            />
-            <div class="progress-text">
-              {{ taskStatus.completed }}/{{ taskStatus.total }} {{ taskStatus.failed > 0 ? `(失败: ${taskStatus.failed})` : '' }}
-            </div>
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <el-divider content-position="center">设备列表</el-divider>
-
-        <el-table :data="taskStatus.results" style="width: 100%">
-          <el-table-column prop="deviceId" label="设备ID" width="180" />
-          <el-table-column prop="status" label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 'complete' ? 'success' : 'danger'">
-                {{ row.status === 'complete' ? '成功' : '失败' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="message" label="信息" />
-        </el-table>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="taskDialogVisible = false">关闭</el-button>
-          <el-button type="primary" @click="refreshTaskStatus" :loading="taskLoading">
-            刷新
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
+    <TaskProgressDialog
+      v-model:visible="taskDialogVisible"
+      :taskId="currentTaskId"
+    />
   </div>
 </template>
 
@@ -193,8 +129,10 @@
 import { ref, onMounted, reactive } from "vue";
 import { ArrowDown, UploadFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox, UploadFile } from "element-plus";
-import { getFileList, deleteFile, uploadFile, batchPushByDevices, getBatchTaskStatus, type File, type BatchTaskStatus } from "@/api/file";
-import { getDeviceList, type Device } from "@/api/device";
+import { getFileList, deleteFile, uploadFile, type File, type BatchTaskStatus } from "@/api/file";
+import DeviceSelector from '@/views/utils/DeviceSelector.vue';
+import TaskProgressDialog from '@/views/utils/TaskProgressDialog.vue';
+import { pushFileToDevices } from '@/views/utils/DevicePushService';
 
 // 文件列表数据
 const fileList = ref<File[]>([]);
@@ -215,19 +153,12 @@ const uploadProgress = ref(0);
 
 // 设备选择对话框
 const deviceDialogVisible = ref(false);
-const deviceList = ref<Device[]>([]);
-const deviceForm = reactive({
-  fileId: 0,
-  deviceIds: [] as string[],
-  maxWorker: 50,
-});
+const currentFileId = ref<number>(0);
 const actionLoading = ref(false);
 
 // 批量任务对话框
 const taskDialogVisible = ref(false);
-const taskStatus = ref<BatchTaskStatus | null>(null);
 const currentTaskId = ref("");
-const taskLoading = ref(false);
 
 // 获取文件列表
 const fetchFileList = async () => {
@@ -375,99 +306,51 @@ const handleDeleteFile = (file: File) => {
 
 // 打开设备选择对话框
 const openDeviceDialog = (file: File) => {
-  deviceForm.fileId = file.fileId;
-  deviceForm.deviceIds = [];
-  deviceDialogVisible.value = true;
-  fetchDeviceList();
-};
-
-// 获取设备列表
-const fetchDeviceList = async () => {
-  try {
-    const res = await getDeviceList({
-      page: 1,
-      pageSize: 100, // 获取较多设备
-    });
-    
-    if (res.code === 0) {
-      deviceList.value = res.data.list;
-    } else {
-      ElMessage.error(res.message || "获取设备列表失败");
-    }
-  } catch (error) {
-    console.error("获取设备列表出错:", error);
-    ElMessage.error("获取设备列表出错");
+  console.log('打开设备选择对话框', file);
+  if (!file || !file.fileId) {
+    console.error('文件信息无效', file);
+    ElMessage.error('文件信息无效');
+    return;
   }
+  
+  currentFileId.value = file.fileId;
+  // 确保先设置好ID再显示对话框
+  setTimeout(() => {
+    deviceDialogVisible.value = true;
+    console.log('设置对话框可见性：', deviceDialogVisible.value);
+  }, 0);
 };
 
-// 提交推送到设备
-const submitPushToDevice = async () => {
-  if (deviceForm.deviceIds.length === 0) {
+// 处理设备选择确认
+const handleDeviceConfirm = (data: { deviceIds?: string[], maxWorker?: number }) => {
+  console.log('处理设备选择确认:', data);
+  if (!data.deviceIds || data.deviceIds.length === 0) {
     ElMessage.warning("请选择至少一个设备");
     return;
   }
-
+  
   actionLoading.value = true;
+  console.log('开始推送文件, 文件ID:', currentFileId.value);
   
-  try {
-    const res = await batchPushByDevices({
-      fileId: deviceForm.fileId,
-      deviceIds: deviceForm.deviceIds,
-      maxWorker: deviceForm.maxWorker,
-    });
+  pushFileToDevices(
+    currentFileId.value, 
+    data.deviceIds,
+    data.maxWorker || 50
+  ).then(taskId => {
+    console.log('推送任务创建成功, 任务ID:', taskId);
+    deviceDialogVisible.value = false;
     
-    if (res.code === 0) {
-      ElMessage.success("推送任务已创建");
-      deviceDialogVisible.value = false;
-      
-      // 显示任务进度对话框
-      currentTaskId.value = res.data.taskId;
-      await fetchTaskStatus();
+    // 显示任务进度对话框
+    currentTaskId.value = taskId;
+    setTimeout(() => {
       taskDialogVisible.value = true;
-      
-      // 定时刷新任务状态
-      const statusInterval = setInterval(async () => {
-        await fetchTaskStatus();
-        if (taskStatus.value?.status === "complete" || taskStatus.value?.status === "failed") {
-          clearInterval(statusInterval);
-        }
-      }, 2000);
-    } else {
-      ElMessage.error(res.message || "推送任务创建失败");
-    }
-  } catch (error) {
+      console.log('显示任务进度对话框:', taskDialogVisible.value);
+    }, 0);
+  }).catch(error => {
     console.error("推送任务创建出错:", error);
-    ElMessage.error("推送任务创建出错");
-  } finally {
+  }).finally(() => {
     actionLoading.value = false;
-  }
-};
-
-// 获取任务状态
-const fetchTaskStatus = async () => {
-  if (!currentTaskId.value) return;
-  
-  taskLoading.value = true;
-  
-  try {
-    const res = await getBatchTaskStatus(currentTaskId.value);
-    
-    if (res.code === 0) {
-      taskStatus.value = res.data;
-    } else {
-      ElMessage.error(res.message || "获取任务状态失败");
-    }
-  } catch (error) {
-    console.error("获取任务状态出错:", error);
-    ElMessage.error("获取任务状态出错");
-  } finally {
-    taskLoading.value = false;
-  }
-};
-
-// 刷新任务状态
-const refreshTaskStatus = () => {
-  fetchTaskStatus();
+  });
 };
 
 // 格式化文件大小
@@ -484,7 +367,7 @@ const formatSize = (size: number) => {
 };
 
 // 获取标签类型
-const getTagType = (fileType: string) => {
+const getTagType = (fileType: string): 'primary' | 'success' | 'info' | 'warning' | 'danger' => {
   switch (fileType) {
     case 'image':
       return 'success';
@@ -499,31 +382,7 @@ const getTagType = (fileType: string) => {
     case 'app':
       return 'warning';
     default:
-      return '';
-  }
-};
-
-// 获取进度条状态
-const getProgressStatus = (task: BatchTaskStatus | null) => {
-  if (!task) return '';
-  if (task.status === 'failed') return 'exception';
-  if (task.status === 'complete') return 'success';
-  return '';
-};
-
-// 获取任务状态文本
-const getTaskStatusText = (status: string) => {
-  switch (status) {
-    case 'pending':
-      return '等待执行';
-    case 'running':
-      return '执行中';
-    case 'complete':
-      return '已完成';
-    case 'failed':
-      return '执行失败';
-    default:
-      return status;
+      return 'info';
   }
 };
 
