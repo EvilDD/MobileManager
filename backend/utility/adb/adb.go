@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -74,10 +75,34 @@ func (s *adbService) PullFile(deviceId string, devicePath string, localPath stri
 
 // PushFile 推送文件到设备
 func (s *adbService) PushFile(deviceId string, localPath string, devicePath string) error {
-	_, err := s.ExecuteCommand(deviceId, "push", localPath, devicePath)
+	g.Log().Debugf(context.Background(), "准备向设备 %s 推送文件，本地路径: %s，目标路径: %s", deviceId, localPath, devicePath)
+
+	// 检查本地文件是否存在
+	fileInfo, err := os.Stat(localPath)
 	if err != nil {
-		return fmt.Errorf("推送文件失败: %v", err)
+		errMsg := fmt.Sprintf("本地文件检查失败: %v", err)
+		g.Log().Errorf(context.Background(), errMsg)
+		return fmt.Errorf(errMsg)
 	}
+	g.Log().Debugf(context.Background(), "本地文件大小: %d 字节", fileInfo.Size())
+
+	// 构建完整的ADB命令
+	cmdArgs := []string{"-s", deviceId, "push", localPath, devicePath}
+	cmdStr := fmt.Sprintf("adb %s", strings.Join(cmdArgs, " "))
+	g.Log().Debugf(context.Background(), "执行ADB命令: %s", cmdStr)
+
+	// 执行命令
+	cmd := exec.Command("adb", cmdArgs...)
+	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	if err != nil {
+		errMsg := fmt.Sprintf("推送文件失败: %v, 输出: %s", err, outputStr)
+		g.Log().Errorf(context.Background(), errMsg)
+		return fmt.Errorf(errMsg)
+	}
+
+	g.Log().Debugf(context.Background(), "文件推送成功，输出: %s", outputStr)
 	return nil
 }
 

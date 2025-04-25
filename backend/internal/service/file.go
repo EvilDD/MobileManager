@@ -81,6 +81,63 @@ func (s *fileService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Up
 	// 获取文件类型（基于扩展名）
 	fileType := s.getFileTypeByExt(fileExt)
 
+	// 计算文件的MD5值
+	src, err := file.Open()
+	if err != nil {
+		return nil, gerror.Newf("打开上传文件失败: %v", err)
+	}
+
+	hash := md5.New()
+	written, err := io.Copy(hash, src)
+	if err != nil {
+		src.Close()
+		return nil, gerror.Newf("计算文件MD5失败: %v", err)
+	}
+	src.Close()
+
+	// 确保文件大小正确
+	if written == 0 {
+		return nil, gerror.New("文件大小为0")
+	}
+
+	md5Value := hex.EncodeToString(hash.Sum(nil))
+	g.Log().Debugf(ctx, "文件MD5计算完成: %s, 大小: %d字节", md5Value, written)
+
+	// 检查是否已存在相同MD5的文件
+	var existingFile *model.File
+	err = dao.File.Ctx(ctx).Where("md5", md5Value).Where("status", 1).Scan(&existingFile)
+	if err != nil {
+		g.Log().Errorf(ctx, "查询已存在文件失败: %v", err)
+	}
+
+	// 如果已存在相同MD5的文件，直接返回该文件信息
+	if existingFile != nil {
+		g.Log().Infof(ctx, "文件已存在，MD5: %s, 文件ID: %d", md5Value, existingFile.Id)
+
+		res.FileId = existingFile.Id
+		res.FileName = existingFile.Name
+		res.FileSize = existingFile.FileSize
+		res.FilePath = existingFile.FilePath
+		res.OriginalName = file.Filename // 使用新上传的原始文件名
+		res.FileType = existingFile.FileType
+		res.MimeType = existingFile.MimeType
+		res.Md5 = md5Value
+
+		// 更新原始文件名（可选，如果需要记录最新的原始名称）
+		if existingFile.OriginalName != file.Filename {
+			_, err = dao.File.Ctx(ctx).Data(g.Map{
+				"original_name": file.Filename,
+			}).Where("id", existingFile.Id).Update()
+			if err != nil {
+				g.Log().Warningf(ctx, "更新原始文件名失败: %v", err)
+			}
+		}
+
+		// 添加一个消息，告知前端文件已存在，使用自定义状态码
+		return res, gerror.New("文件已存在，无需重复上传")
+	}
+
+	// 文件不存在，继续保存新文件
 	// 生成存储路径
 	uploadPath := "uploads/files/" + fileType
 	if !gfile.Exists(uploadPath) {
@@ -95,6 +152,13 @@ func (s *fileService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Up
 	uniqueName := now.Format("YmdHis") + "_" + grand.S(8) + fileExt
 	filePath := gfile.Join(uploadPath, uniqueName)
 
+	// 重新打开源文件
+	src, err = file.Open()
+	if err != nil {
+		return nil, gerror.Newf("重新打开上传文件失败: %v", err)
+	}
+	defer src.Close()
+
 	// 创建目标文件
 	dst, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -102,19 +166,8 @@ func (s *fileService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Up
 	}
 	defer dst.Close()
 
-	// 计算MD5同时写入文件
-	hash := md5.New()
-	multiWriter := io.MultiWriter(dst, hash)
-
-	// 打开源文件
-	src, err := file.Open()
-	if err != nil {
-		return nil, gerror.Newf("打开上传文件失败: %v", err)
-	}
-	defer src.Close()
-
-	// 复制文件内容并计算MD5
-	written, err := io.Copy(multiWriter, src)
+	// 复制文件内容
+	written, err = io.Copy(dst, src)
 	if err != nil {
 		// 删除已上传的文件
 		_ = gfile.Remove(filePath)
@@ -127,9 +180,6 @@ func (s *fileService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Up
 		_ = gfile.Remove(filePath)
 		return nil, gerror.New("保存的文件大小为0")
 	}
-
-	// 获取MD5值
-	md5Value := hex.EncodeToString(hash.Sum(nil))
 
 	// 创建文件记录
 	result, err := dao.File.Ctx(ctx).Data(g.Map{
@@ -166,7 +216,8 @@ func (s *fileService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Up
 	res.MimeType = mimeType
 	res.Md5 = md5Value
 
-	return
+	g.Log().Infof(ctx, "文件上传成功，新ID: %d, MD5: %s", fileId, md5Value)
+	return res, nil
 }
 
 // BatchPushByDevices 批量推送文件到设备
