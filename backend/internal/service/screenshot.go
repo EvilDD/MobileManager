@@ -316,7 +316,7 @@ func (s *screenshotService) Capture(ctx context.Context, req *v1.ScreenshotReq) 
 	}
 
 	timestamp := time.Now().UnixNano()
-	screenshotDir := "resource/screenshots"
+	screenshotDir := "uploads/screenshots"
 	if err := os.MkdirAll(screenshotDir, 0755); err != nil {
 		res.Error = fmt.Sprintf("创建截图目录失败: %v", err)
 		return res, nil

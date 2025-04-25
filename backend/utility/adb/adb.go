@@ -18,6 +18,8 @@ type IAdb interface {
 	ExecuteCommand(deviceId string, args ...string) (string, error)
 	// PullFile 从设备拉取文件
 	PullFile(deviceId string, devicePath string, localPath string) error
+	// PushFile 推送文件到设备
+	PushFile(deviceId string, localPath string, devicePath string) error
 	// RemoveDeviceFile 删除设备上的文件
 	RemoveDeviceFile(deviceId string, path string) error
 	// Screencap 设备截图
@@ -66,6 +68,15 @@ func (s *adbService) PullFile(deviceId string, devicePath string, localPath stri
 	_, err := s.ExecuteCommand(deviceId, "pull", devicePath, localPath)
 	if err != nil {
 		return fmt.Errorf("拉取文件失败: %v", err)
+	}
+	return nil
+}
+
+// PushFile 推送文件到设备
+func (s *adbService) PushFile(deviceId string, localPath string, devicePath string) error {
+	_, err := s.ExecuteCommand(deviceId, "push", localPath, devicePath)
+	if err != nil {
+		return fmt.Errorf("推送文件失败: %v", err)
 	}
 	return nil
 }
@@ -246,4 +257,9 @@ func KillAllBackgroundApps(ctx context.Context, deviceId string) (string, error)
 	}
 
 	return debugOutput, nil
+}
+
+// PushFile 推送文件到设备，使用ADB push命令
+func PushFile(deviceId, localPath, devicePath string) (string, error) {
+	return executeDeviceAdbCommand(deviceId, "push", localPath, devicePath)
 }

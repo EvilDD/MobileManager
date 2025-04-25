@@ -242,7 +242,7 @@ func (s *appService) Upload(ctx context.Context, req *v1.UploadReq) (res *v1.Upl
 	}
 
 	// 生成存储路径
-	uploadPath := "resource/apk"
+	uploadPath := "uploads/apk"
 	if !gfile.Exists(uploadPath) {
 		err = gfile.Mkdir(uploadPath)
 		if err != nil {

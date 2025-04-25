@@ -27,6 +27,26 @@ func initAppTable(ctx context.Context) error {
 	return err
 }
 
+// 初始化文件表
+func initFileTable(ctx context.Context) error {
+	_, err := g.DB().Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS "file" (
+			"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+			"name" VARCHAR(255) NOT NULL,
+			"original_name" VARCHAR(255) NOT NULL,
+			"file_type" VARCHAR(50) NOT NULL,
+			"file_size" INTEGER NOT NULL,
+			"file_path" VARCHAR(255) NOT NULL,
+			"mime_type" VARCHAR(100),
+			"md5" VARCHAR(32),
+			"status" INTEGER DEFAULT 1,
+			"created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			"updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	return err
+}
+
 // 初始化数据表
 func initTables(ctx context.Context) error {
 	// 创建分组表
@@ -62,6 +82,11 @@ func initTables(ctx context.Context) error {
 
 	// 创建应用表
 	if err := initAppTable(ctx); err != nil {
+		return err
+	}
+
+	// 创建文件表
+	if err := initFileTable(ctx); err != nil {
 		return err
 	}
 

@@ -10,6 +10,7 @@ import (
 	_ "backend/docs"
 	"backend/internal/controller/app"
 	"backend/internal/controller/device"
+	"backend/internal/controller/file"
 	groupctl "backend/internal/controller/group"
 	"backend/internal/controller/hello"
 	"backend/internal/controller/scrcpy"
@@ -47,6 +48,7 @@ var (
 					scrcpy.NewV1(),
 					screenshot.NewV1(),
 					app.NewV1(),
+					file.NewV1(),
 				)
 			})
 
