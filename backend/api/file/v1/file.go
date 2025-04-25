@@ -72,9 +72,10 @@ type File struct {
 
 // ListReq 获取文件列表请求
 type ListReq struct {
-	g.Meta   `path:"/files/list" method:"get" tags:"文件管理" summary:"获取文件列表"`
-	Page     int `json:"page" d:"1" v:"min:0#分页号码错误" dc:"分页号码，默认1"`
-	PageSize int `json:"pageSize" d:"10" v:"max:50#分页数量最大50条" dc:"分页数量，最大50"`
+	g.Meta       `path:"/files/list" method:"get" tags:"文件管理" summary:"获取文件列表"`
+	Page         int    `json:"page" d:"1" v:"min:0#分页号码错误" dc:"分页号码，默认1"`
+	PageSize     int    `json:"pageSize" d:"10" v:"max:50#分页数量最大50条" dc:"分页数量，最大50"`
+	OriginalName string `json:"originalName" dc:"原始文件名，支持模糊查询"`
 }
 
 // ListRes 获取文件列表响应

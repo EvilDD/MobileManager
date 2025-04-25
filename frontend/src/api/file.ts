@@ -1,5 +1,4 @@
-import request from '@/utils/request';
-import type { BaseResponse } from './types';
+import { http } from "@/utils/http";
 
 export interface File {
   fileId: number;
@@ -18,13 +17,18 @@ export interface FileListParams {
   pageSize: number;
   fileName?: string;
   fileType?: string;
+  originalName?: string;
 }
 
 export interface FileListResult {
-  list: File[];
-  total: number;
-  page: number;
-  pageSize: number;
+  code: number;
+  message: string;
+  data: {
+    list: File[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }
 }
 
 export interface BatchTaskResult {
@@ -42,6 +46,22 @@ export interface BatchTaskStatus {
   results: BatchTaskResult[];
 }
 
+export interface BatchOperationResult {
+  code: number;
+  message: string;
+  data: {
+    taskId: string;
+    total: number;
+    deviceIds: string[];
+  }
+}
+
+export interface BatchTaskStatusResult {
+  code: number;
+  message: string;
+  data: BatchTaskStatus;
+}
+
 export interface BatchPushParams {
   fileId: number;
   deviceIds: string[];
@@ -50,11 +70,11 @@ export interface BatchPushParams {
 
 // 获取文件列表
 export function getFileList(params: FileListParams) {
-  return request<BaseResponse<FileListResult>>({
-    url: '/api/v1/file/list',
-    method: 'GET',
-    params,
-  });
+  return http.request<FileListResult>(
+    'get',
+    '/api/files/list', 
+    { params }
+  );
 }
 
 // 上传文件
@@ -62,49 +82,39 @@ export function uploadFile(file: globalThis.File) {
   const formData = new FormData();
   formData.append('file', file);
   
-  return request<BaseResponse<{ fileId: number }>>({
-    url: '/api/v1/file/upload',
-    method: 'POST',
-    data: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  return http.request<{ code: number; message: string; data: { fileId: number } }>(
+    'post',
+    '/api/files/upload',
+    { 
+      data: formData,
+      headers: {
+        'Content-Type': undefined
+      }
+    }
+  );
 }
 
 // 批量推送文件到设备
 export function batchPushByDevices(data: BatchPushParams) {
-  return request<BaseResponse<{ taskId: string }>>({
-    url: '/api/v1/file/batch-push',
-    method: 'POST',
-    data,
-  });
+  return http.request<BatchOperationResult>(
+    'post',
+    '/api/files/batch-push',
+    { data }
+  );
 }
 
 // 获取批量任务状态
 export function getBatchTaskStatus(taskId: string) {
-  return request<BaseResponse<BatchTaskStatus>>({
-    url: `/api/v1/file/batch-task-status/${taskId}`,
-    method: 'GET',
-  });
+  return http.request<BatchTaskStatusResult>(
+    'get',
+    `/api/files/batch-task-status/${taskId}`
+  );
 }
 
 // 删除文件
 export function deleteFile(fileId: number) {
-  return request<BaseResponse<null>>({
-    url: `/api/v1/file/delete/${fileId}`,
-    method: 'DELETE',
-  });
-}
-
-// 创建文件夹（空实现，根据需要扩展）
-export function createFolder(name: string, parentId?: number) {
-  return request<BaseResponse<{ fileId: number }>>({
-    url: '/api/v1/file/create-folder',
-    method: 'POST',
-    data: {
-      name,
-      parentId,
-    },
-  });
+  return http.request<{ code: number; message: string; data: null }>(
+    'delete',
+    `/api/files/delete/${fileId}`
+  );
 }

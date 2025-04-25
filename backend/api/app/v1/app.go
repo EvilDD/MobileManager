@@ -5,13 +5,6 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// 应用类型枚举
-const (
-	AppTypeSystem   = "系统应用"
-	AppTypeUser     = "用户应用"
-	AppTypeSettings = "系统设置"
-)
-
 // 批量操作任务状态
 const (
 	TaskStatusPending  = "pending"  // 等待执行

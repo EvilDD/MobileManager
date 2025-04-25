@@ -10,7 +10,7 @@
         </div>
       </template>
       <div class="search-bar">
-        <el-input v-model="searchKeyword" placeholder="搜索文件名称" class="search-input" />
+        <el-input v-model="searchKeyword" placeholder="搜索原始文件名" class="search-input" />
         <el-button type="primary" @click="handleSearch">搜索</el-button>
         <el-button @click="resetSearch">重置</el-button>
       </div>
@@ -242,6 +242,7 @@ const fetchFileList = async () => {
     const res = await getFileList({
       page: currentPage.value,
       pageSize: pageSize.value,
+      originalName: searchKeyword.value
     });
     
     if (res.code === 0) {

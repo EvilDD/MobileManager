@@ -377,14 +377,27 @@ func (s *fileService) List(ctx context.Context, req *v1.ListReq) (res *v1.ListRe
 	}
 
 	// 查询数据库中的文件列表
+	fileModel := dao.File.Ctx(ctx)
+
+	// 如果指定了原始文件名，添加查询条件
+	if req.OriginalName != "" {
+		fileModel = fileModel.WhereLike(dao.File.Columns().OriginalName, "%"+req.OriginalName+"%")
+	}
+
 	var files []*model.File
-	err = dao.File.Ctx(ctx).Page(req.Page, req.PageSize).Order("id DESC").Scan(&files)
+	err = fileModel.Page(req.Page, req.PageSize).Order("id DESC").Scan(&files)
 	if err != nil {
 		return nil, err
 	}
 
 	// 获取总数
-	count, err := dao.File.Ctx(ctx).Count()
+	countModel := dao.File.Ctx(ctx)
+	// 同样应用原始文件名过滤条件
+	if req.OriginalName != "" {
+		countModel = countModel.WhereLike(dao.File.Columns().OriginalName, "%"+req.OriginalName+"%")
+	}
+
+	count, err := countModel.Count()
 	if err != nil {
 		return nil, err
 	}
