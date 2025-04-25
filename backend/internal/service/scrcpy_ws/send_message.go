@@ -68,6 +68,7 @@ func (s *ScrcpyService) sendVideoSettings(ctx context.Context, tcpConn net.Conn,
 
 	deviceConn.VideoSettingsSent = true
 	glog.Info(ctx, "视频设置已发送",
+		"设备ID:", deviceConn.UdId,
 		"比特率:", settings.Bitrate,
 		"最大帧率:", settings.MaxFps,
 		"分辨率:", settings.Bounds.Width, "x", settings.Bounds.Height,
@@ -76,7 +77,7 @@ func (s *ScrcpyService) sendVideoSettings(ctx context.Context, tcpConn net.Conn,
 }
 
 // sendKeyCodeEvent 发送按键控制事件
-func (s *ScrcpyService) sendKeyCodeEvent(ctx context.Context, tcpConn net.Conn, message model.KeyCodeControlMessage) {
+func (s *ScrcpyService) sendKeyCodeEvent(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, message model.KeyCodeControlMessage) {
 	// 创建按键控制消息
 	buffer := make([]byte, 14) // 总大小 = 1 + 1 + 4 + 4 + 4 = 14字节
 
@@ -124,6 +125,7 @@ func (s *ScrcpyService) sendKeyCodeEvent(ctx context.Context, tcpConn net.Conn, 
 	}
 
 	glog.Info(ctx, "按键事件已发送",
+		"设备ID:", deviceConn.UdId,
 		"类型:", actionName,
 		"键码:", message.KeyCode,
 		"键名:", keyCodeName)
@@ -188,8 +190,11 @@ func (s *ScrcpyService) sendTouchEvent(ctx context.Context, tcpConn net.Conn, de
 	case model.ACTION_MOVE:
 		actionName = "MOVE"
 	}
-
+	if action == model.ACTION_MOVE { //信息量太大，不打印
+		return
+	}
 	glog.Info(ctx, "触摸事件已发送",
+		"设备ID:", deviceConn.UdId,
 		"类型:", actionName,
 		"坐标:", x, y,
 		"视频尺寸:", deviceConn.VideoWidth, "x", deviceConn.VideoHeight)
@@ -197,7 +202,9 @@ func (s *ScrcpyService) sendTouchEvent(ctx context.Context, tcpConn net.Conn, de
 
 // sendSwipeEvent 发送滑动事件
 func (s *ScrcpyService) sendSwipeEvent(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, event model.SwipeEvent) {
-	glog.Info(ctx, "开始滑动:", "起点:", event.StartX, event.StartY, "终点:", event.EndX, event.EndY)
+	glog.Info(ctx, "开始滑动:",
+		"设备ID:", deviceConn.UdId,
+		"起点:", event.StartX, event.StartY, "终点:", event.EndX, event.EndY)
 
 	// 发送按下事件
 	s.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_DOWN, event.StartX, event.StartY)
@@ -228,12 +235,15 @@ func (s *ScrcpyService) sendSwipeEvent(ctx context.Context, tcpConn net.Conn, de
 
 	// 发送抬起事件
 	s.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_UP, event.EndX, event.EndY)
-	glog.Info(ctx, "滑动事件已完成")
+	glog.Info(ctx, "滑动事件已完成",
+		"设备ID:", deviceConn.UdId)
 }
 
 // sendClickEvent 发送点击事件
 func (s *ScrcpyService) sendClickEvent(ctx context.Context, tcpConn net.Conn, deviceConn *model.DeviceConnection, event model.ClickEvent) {
-	glog.Info(ctx, "开始点击:", "坐标:", event.X, event.Y)
+	glog.Info(ctx, "开始点击:",
+		"设备ID:", deviceConn.UdId,
+		"坐标:", event.X, event.Y)
 
 	// 发送按下事件
 	s.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_DOWN, event.X, event.Y)
@@ -249,5 +259,6 @@ func (s *ScrcpyService) sendClickEvent(ctx context.Context, tcpConn net.Conn, de
 
 	// 发送抬起事件
 	s.sendTouchEvent(ctx, tcpConn, deviceConn, model.ACTION_UP, event.X, event.Y)
-	glog.Info(ctx, "点击事件已完成")
+	glog.Info(ctx, "点击事件已完成",
+		"设备ID:", deviceConn.UdId)
 }

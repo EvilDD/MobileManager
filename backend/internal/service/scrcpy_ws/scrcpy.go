@@ -187,9 +187,11 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 				if err != nil {
 					// 检查是否是连接已关闭的错误
 					if strings.Contains(err.Error(), "use of closed network connection") {
-						glog.Debug(ctx, "与设备的连接已关闭")
+						glog.Debug(ctx, "与设备的连接已关闭",
+							"设备ID:", udid)
 					} else {
-						glog.Error(ctx, "向设备连接写入数据失败:", err)
+						glog.Error(ctx, "向设备连接写入数据失败:", err,
+							"设备ID:", udid)
 					}
 					return
 				}
@@ -207,9 +209,11 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 			if err != nil {
 				// 检查是否是连接已关闭的错误
 				if strings.Contains(err.Error(), "use of closed network connection") {
-					glog.Debug(ctx, "与设备的连接已正常关闭")
+					glog.Debug(ctx, "与设备的连接已正常关闭",
+						"设备ID:", udid)
 				} else {
-					glog.Error(ctx, "从设备连接读取数据失败:", err)
+					glog.Error(ctx, "从设备连接读取数据失败:", err,
+						"设备ID:", udid)
 				}
 
 				// 向客户端发送连接断开的错误消息
@@ -255,10 +259,12 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 				nalType := received[4] & 0x1F
 				if nalType == 5 { // I帧
 					isKeyFrame = true
-					glog.Debug(ctx, "识别到I帧，优先处理")
+					glog.Debug(ctx, "识别到I帧，优先处理",
+						"设备ID:", deviceConn.UdId)
 				} else if nalType == 7 || nalType == 8 { // SPS或PPS
 					isKeyFrame = true
-					glog.Debug(ctx, "识别到SPS/PPS配置帧，优先处理")
+					glog.Debug(ctx, "识别到SPS/PPS配置帧，优先处理",
+						"设备ID:", deviceConn.UdId)
 				}
 			}
 
@@ -270,7 +276,8 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 					// 关键帧成功加入队列
 				default:
 					// 关键帧队列满，尝试腾出空间
-					glog.Warning(ctx, "关键帧队列已满，尝试清理普通帧队列")
+					glog.Warning(ctx, "关键帧队列已满，尝试清理普通帧队列",
+						"设备ID:", deviceConn.UdId)
 					// 尝试从普通队列中丢弃一些帧
 					for i := 0; i < 5; i++ {
 						select {
@@ -284,7 +291,8 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 					case keyFrameQueue <- received:
 						// 成功加入
 					default:
-						glog.Error(ctx, "无法处理关键帧，可能导致花屏")
+						glog.Error(ctx, "无法处理关键帧，可能导致花屏",
+							"设备ID:", deviceConn.UdId)
 					}
 				}
 			} else {
@@ -299,10 +307,12 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 						select {
 						case msgQueue <- received: // 再次尝试写入
 						default:
-							glog.Warning(ctx, "消息队列负载过高，丢弃普通帧")
+							glog.Warning(ctx, "消息队列负载过高，丢弃普通帧",
+								"设备ID:", deviceConn.UdId)
 						}
 					default:
-						glog.Warning(ctx, "无法丢弃普通帧")
+						glog.Warning(ctx, "无法丢弃普通帧",
+							"设备ID:", deviceConn.UdId)
 					}
 				}
 			}
@@ -350,6 +360,7 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 			// 每30秒记录一次帧处理统计
 			if time.Since(lastLogTime) > 30*time.Second {
 				glog.Info(ctx, "帧处理统计",
+					"设备ID:", deviceConn.UdId,
 					"普通帧数", frameCounter,
 					"关键帧数", keyFrameCounter,
 					"总帧数", frameCounter+keyFrameCounter)
@@ -368,9 +379,11 @@ func (s *ScrcpyService) HandleConnection(ctx context.Context, wsConn *websocket.
 				sendMutex.Unlock()
 				if err != nil {
 					if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-						glog.Debug(ctx, "WebSocket连接已正常关闭")
+						glog.Debug(ctx, "WebSocket连接已正常关闭",
+							"设备ID:", deviceConn.UdId)
 					} else {
-						glog.Error(ctx, "向WebSocket写入数据失败:", err)
+						glog.Error(ctx, "向WebSocket写入数据失败:", err,
+							"设备ID:", deviceConn.UdId)
 					}
 					return
 				}
@@ -488,14 +501,15 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 				keyEvent.MetaState = int(metaStateVal)
 			}
 
-			s.sendKeyCodeEvent(ctx, tcpConn, keyEvent)
+			s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, keyEvent)
 		}
 	case "home":
 		// 主页按钮快捷命令 - 按下然后释放
-		glog.Info(ctx, "触发HOME按键")
+		glog.Info(ctx, "触发HOME按键",
+			"设备ID:", deviceConn.UdId)
 
 		// 发送按下事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_DOWN,
 			KeyCode:   model.KEYCODE_HOME,
 			Repeat:    0,
@@ -506,7 +520,7 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		time.Sleep(50 * time.Millisecond)
 
 		// 发送释放事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_UP,
 			KeyCode:   model.KEYCODE_HOME,
 			Repeat:    0,
@@ -514,10 +528,11 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		})
 	case "back":
 		// 返回按钮快捷命令
-		glog.Info(ctx, "触发BACK按键")
+		glog.Info(ctx, "触发BACK按键",
+			"设备ID:", deviceConn.UdId)
 
 		// 发送按下事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_DOWN,
 			KeyCode:   model.KEYCODE_BACK,
 			Repeat:    0,
@@ -528,7 +543,7 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		time.Sleep(50 * time.Millisecond)
 
 		// 发送释放事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_UP,
 			KeyCode:   model.KEYCODE_BACK,
 			Repeat:    0,
@@ -536,10 +551,11 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		})
 	case "overview":
 		// 最近任务按钮快捷命令
-		glog.Info(ctx, "触发OVERVIEW按键")
+		glog.Info(ctx, "触发OVERVIEW按键",
+			"设备ID:", deviceConn.UdId)
 
 		// 发送按下事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_DOWN,
 			KeyCode:   model.KEYCODE_APP_SWITCH,
 			Repeat:    0,
@@ -550,7 +566,7 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		time.Sleep(50 * time.Millisecond)
 
 		// 发送释放事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_UP,
 			KeyCode:   model.KEYCODE_APP_SWITCH,
 			Repeat:    0,
@@ -558,10 +574,11 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		})
 	case "power":
 		// 电源按钮快捷命令
-		glog.Info(ctx, "触发POWER按键")
+		glog.Info(ctx, "触发POWER按键",
+			"设备ID:", deviceConn.UdId)
 
 		// 发送按下事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_DOWN,
 			KeyCode:   model.KEYCODE_POWER,
 			Repeat:    0,
@@ -572,7 +589,7 @@ func (s *ScrcpyService) handleCommandMessage(ctx context.Context, wsConn *websoc
 		time.Sleep(50 * time.Millisecond)
 
 		// 发送释放事件
-		s.sendKeyCodeEvent(ctx, tcpConn, model.KeyCodeControlMessage{
+		s.sendKeyCodeEvent(ctx, tcpConn, deviceConn, model.KeyCodeControlMessage{
 			Action:    model.ACTION_UP,
 			KeyCode:   model.KEYCODE_POWER,
 			Repeat:    0,
@@ -792,6 +809,7 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 						spsInfo.LevelIdc)
 
 					glog.Info(ctx, "从视频帧解析到实际编码尺寸",
+						"设备ID:", deviceConn.UdId,
 						"原尺寸", fmt.Sprintf("%d x %d", originalWidth, originalHeight),
 						"新尺寸", fmt.Sprintf("%d x %d", deviceConn.VideoWidth, deviceConn.VideoHeight),
 						"编解码器", codec)
@@ -825,7 +843,8 @@ func (s *ScrcpyService) handleSpecialMessages(ctx context.Context, wsConn *webso
 
 // handleInitialInfo 处理初始化信息
 func (s *ScrcpyService) handleInitialInfo(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) {
-	glog.Info(ctx, "处理初始化信息...")
+	glog.Info(ctx, "处理初始化信息...",
+		"设备ID:", deviceConn.UdId)
 
 	// 尝试解析屏幕尺寸和客户端ID，实际应用中可能需要更复杂的解析逻辑
 	offset := len(model.MAGIC_BYTES_INITIAL)
@@ -847,7 +866,9 @@ func (s *ScrcpyService) handleInitialInfo(ctx context.Context, wsConn *websocket
 
 				deviceConn.ScreenWidth = width
 				deviceConn.ScreenHeight = height
-				glog.Info(ctx, "解析到屏幕尺寸:", "宽:", width, "高:", height)
+				glog.Info(ctx, "解析到屏幕尺寸:",
+					"设备ID:", deviceConn.UdId,
+					"宽:", width, "高:", height)
 			}
 		}
 	}
@@ -874,7 +895,8 @@ func (s *ScrcpyService) handleInitialInfo(ctx context.Context, wsConn *websocket
 
 // handleDeviceMessage 处理设备消息
 func (s *ScrcpyService) handleDeviceMessage(ctx context.Context, wsConn *websocket.Conn, deviceConn *model.DeviceConnection, data []byte) {
-	glog.Info(ctx, "处理设备消息...")
+	glog.Info(ctx, "处理设备消息...",
+		"设备ID:", deviceConn.UdId)
 
 	// 直接转发设备消息到客户端
 	err := wsConn.WriteMessage(websocket.BinaryMessage, data)
@@ -924,7 +946,9 @@ func (s *ScrcpyService) checkPortForward(ctx context.Context, udid string, port 
 				// 再检查是否包含正确的端口转发
 				if strings.Contains(line, expectedPort) {
 					foundForward = true
-					glog.Info(ctx, "[DEBUG] 已找到设备", udid, "的端口转发:", line)
+					glog.Info(ctx, "[DEBUG] 已找到设备的端口转发:",
+						"设备ID:", udid,
+						"端口转发:", line)
 					break
 				}
 			}
