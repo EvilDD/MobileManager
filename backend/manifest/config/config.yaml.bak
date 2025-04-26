@@ -12,8 +12,16 @@ server:
 # https://goframe.org/docs/core/glog-config
 logger:
   path: "./logs"
-  level : "all"
+  level: "all"
   stdout: true
+  writerColorEnable: false
+  file: "{Y-m-d}.log"
+  ctxKeys: ["RequestId", "SessionId"]
+  rotateSize: "100M"
+  rotateExpire: "3d"
+  rotateBackupLimit: 10
+  rotateBackupCompress: 9
+  rotateCheckInterval: "1h"
 
 # https://goframe.org/docs/core/gdb-config-file
 database:

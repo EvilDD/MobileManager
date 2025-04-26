@@ -102,7 +102,7 @@ go run main.go
 ```bash
 cd frontend
 pnpm install
-rm frontend\.env && mv frontend\.env.bak frontend\.env
+mv frontend\.env.bak frontend\.env.development
 pnpm run dev
 ```
 
