@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Platform, Link, VideoPlay, VideoCamera, User } from '@element-plus/icons-vue';
+import { Platform, Link, VideoPlay, VideoCamera, User, Warning } from '@element-plus/icons-vue';
 
 defineOptions({
   name: "Welcome"
@@ -10,6 +10,27 @@ defineOptions({
   <div class="welcome-container">
     <div class="welcome-content">
       <h1 class="welcome-title">欢迎使用 <span class="highlight">Mobile Manager</span></h1>
+      
+      <div class="card disclaimer-card">
+        <h2 class="card-title">
+          <el-icon><Warning /></el-icon>
+          免责声明
+        </h2>
+        <p class="disclaimer-text">
+          本工具仅供合法用途使用，不得用于任何非法活动。常用于以下合法场景：
+        </p>
+        <ul class="disclaimer-list">
+          <li>自动化测试</li>
+          <li>并发测试</li>
+          <li>搭建云手机平台</li>
+          <li>云游戏测试</li>
+          <li>APP兼容性测试</li>
+          <li>学习研究用途</li>
+        </ul>
+        <p class="disclaimer-text">
+          请遵守相关法律法规，合理使用本工具。用户需对使用过程中的行为负全部责任。
+        </p>
+      </div>
       
       <div class="card">
         <h2 class="card-title">
@@ -86,6 +107,26 @@ defineOptions({
 .card:hover {
   transform: translateY(-5px);
   box-shadow: var(--el-box-shadow);
+}
+
+.disclaimer-card {
+  border-left: 4px solid var(--el-color-warning);
+}
+
+.disclaimer-text {
+  color: var(--el-text-color-regular);
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.disclaimer-list {
+  color: var(--el-text-color-regular);
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.disclaimer-list li {
+  margin-bottom: 0.25rem;
 }
 
 .card-title {

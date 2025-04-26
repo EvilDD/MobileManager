@@ -8,7 +8,8 @@ export default {
     icon: "ri:file-code-line",
     title: "脚本管理",
     rank: 22,
-    alwaysShow: true
+    alwaysShow: true,
+    showLink: false
   },
   children: [
     {

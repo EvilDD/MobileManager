@@ -8,7 +8,8 @@ export default {
     icon: "ri:user-settings-line",
     title: "帐号管理",
     rank: 21,
-    alwaysShow: true
+    alwaysShow: true,
+    showLink: false
   },
   children: [
     {
