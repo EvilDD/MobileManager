@@ -151,6 +151,16 @@ MobileManager/
     │   └── views/        # 页面
 ```
 
+## 📱 联系作者
+
+<div align="center">
+  <img src="wx.jpg" alt="微信二维码" width="200" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+  <p>扫码添加微信</p>
+</div>
+
+欢迎关注作者获取更多优质内容！
+- B站：[https://space.bilibili.com/25110244](https://space.bilibili.com/25110244)
+
 ## 📄 贡献指南
 
 欢迎提交 Issue 和 Pull Request！
