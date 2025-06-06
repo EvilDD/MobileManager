@@ -1,3 +1,5 @@
+# 收到一位粉丝的衷告案例......停止分享了吧！
+
 # ➤ MobileManager
 
 <div align="center">
